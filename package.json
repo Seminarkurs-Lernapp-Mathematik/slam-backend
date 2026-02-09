@@ -1,0 +1,36 @@
+{
+  "name": "slam-backend",
+  "version": "1.0.0",
+  "description": "SLAM Learning App Backend - Cloudflare Workers API",
+  "main": "src/index.ts",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "deploy:production": "wrangler deploy --env production",
+    "deploy:staging": "wrangler deploy --env staging",
+    "test": "vitest",
+    "type-check": "tsc --noEmit",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "lint": "eslint src --ext .ts"
+  },
+  "keywords": [
+    "cloudflare-workers",
+    "ai",
+    "education",
+    "api"
+  ],
+  "author": "SLAM Team",
+  "license": "MIT",
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241218.0",
+    "@types/node": "^20.11.5",
+    "prettier": "^3.2.4",
+    "typescript": "^5.3.3",
+    "vitest": "^1.2.0",
+    "wrangler": "^3.80.4"
+  },
+  "dependencies": {
+    "hono": "^4.0.0"
+  }
+}

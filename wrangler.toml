@@ -1,0 +1,63 @@
+# Wrangler Configuration for SLAM Backend
+# Documentation: https://developers.cloudflare.com/workers/wrangler/configuration/
+
+name = "slam-backend"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Default (Development) Environment
+# Accessible at: slam-backend.{your-subdomain}.workers.dev
+[env.development]
+name = "slam-backend-dev"
+route = { pattern = "https://api-dev.learn-smart.app/*", zone_name = "learn-smart.app" }
+vars = { ENVIRONMENT = "development" }
+
+# Staging Environment
+# Accessible at: api-staging.learn-smart.app
+[env.staging]
+name = "slam-backend-staging"
+route = { pattern = "https://api-staging.learn-smart.app/*", zone_name = "learn-smart.app" }
+vars = { ENVIRONMENT = "staging" }
+
+# Production Environment
+# Accessible at: api.learn-smart.app
+[env.production]
+name = "slam-backend-production"
+route = { pattern = "https://api.learn-smart.app/*", zone_name = "learn-smart.app" }
+vars = { ENVIRONMENT = "production" }
+
+# Bindings (same for all environments)
+# Uncomment and configure as needed
+
+# KV Namespace for caching
+# [[kv_namespaces]]
+# binding = "CACHE"
+# id = "your-kv-namespace-id"
+
+# D1 Database (if needed)
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "slam-db"
+# database_id = "your-database-id"
+
+# R2 Bucket for file storage (if needed)
+# [[r2_buckets]]
+# binding = "STORAGE"
+# bucket_name = "slam-storage"
+
+# Environment Variables (set via wrangler secret)
+# These should be set using: wrangler secret put VARIABLE_NAME
+#
+# Required secrets:
+# - CLAUDE_API_KEY (optional, if not using user-provided keys)
+# - GEMINI_API_KEY (optional, if not using user-provided keys)
+# - FIREBASE_SERVICE_ACCOUNT (JSON string for Firestore access)
+
+# Worker Limits
+# limits = { cpu_ms = 50 }
+
+# Observability
+[observability]
+enabled = true
+head_sampling_rate = 0.1
