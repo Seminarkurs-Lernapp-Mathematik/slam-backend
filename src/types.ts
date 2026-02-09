@@ -1,9 +1,10 @@
 /**
- * Shared TypeScript types for SLAM Backend
+ * Shared TypeScript Type Definitions
+ * Used across all API endpoints
  */
 
 // ============================================================================
-// REQUEST/RESPONSE TYPES
+// TOPIC & USER CONTEXT
 // ============================================================================
 
 export interface Topic {
@@ -29,9 +30,15 @@ export interface UserContext {
   };
 }
 
+// ============================================================================
+// QUESTION TYPES
+// ============================================================================
+
+export type QuestionType = 'multiple-choice' | 'fill-in' | 'step-by-step' | 'free-form' | 'numeric';
+
 export interface Question {
   id: string;
-  type: 'multiple-choice' | 'fill-in' | 'step-by-step';
+  type: QuestionType;
   difficulty: number;
   topic: string;
   subtopic: string;
@@ -42,12 +49,24 @@ export interface Question {
   }>;
   solution: string;
   explanation: string;
-  afbLevel?: string;
-  requiresGeogebra?: boolean;
+  afbLevel: 'I' | 'II' | 'III';
+  requiresGeogebra: boolean;
+  options?: Array<{
+    id: string;
+    text: string;
+    isCorrect?: boolean;
+  }>;
+  steps?: Array<{
+    stepNumber: number;
+    expectedAnswer: string;
+    tolerance?: number;
+  }>;
+  correctAnswer?: string;
+  expectedAnswer?: string;
+  tolerance?: number;
 }
 
 export interface QuestionSession {
-  success: boolean;
   sessionId: string;
   learningPlanItemId: number;
   topics: Topic[];
@@ -60,54 +79,88 @@ export interface QuestionSession {
   providerUsed?: string;
 }
 
-export interface AnswerEvaluation {
-  success: boolean;
-  isCorrect: boolean;
-  feedback: string;
-  xpEarned: number;
-  detailedExplanation?: string;
-  misconceptions?: string[];
-  nextDifficulty?: number;
-}
-
 // ============================================================================
-// API PROVIDER TYPES
+// AI CONFIGURATION
 // ============================================================================
 
 export type AIProvider = 'claude' | 'gemini';
 export type ModelTier = 'light' | 'standard' | 'heavy';
-export type AFBLevel = 'I' | 'II' | 'III';
 
-export interface ModelConfig {
-  provider: AIProvider;
-  model: string;
-  tier: ModelTier;
-  temperature?: number;
-  maxTokens?: number;
+// ============================================================================
+// EVALUATION TYPES
+// ============================================================================
+
+export interface AnswerEvaluation {
+  isCorrect: boolean;
+  feedback: string;
+  correctAnswer: string | string[] | null;
+  xpEarned: number;
+  coinsEarned: number;
+  xpBreakdown: {
+    base: number;
+    hintPenalty: number;
+    timePenalty: number;
+    timeBonus?: number;
+    streakBonus?: number;
+    equivalenceBonus?: number;
+    total: number;
+  };
+  coinBreakdown: {
+    base: number;
+    multiplier: number;
+    bonuses?: Array<{ type: string; bonus: string }>;
+    total: number;
+  };
+  misconceptions: Array<{
+    id: string;
+    name: string;
+    description: string;
+    hint: string;
+  }>;
+  equivalenceResult?: any;
+  streakFrozen?: boolean;
 }
 
 // ============================================================================
-// ERROR TYPES
+// ERROR HANDLING
 // ============================================================================
 
 export class APIError extends Error {
-  constructor(
-    message: string,
-    public statusCode: number = 500,
-    public code?: string
-  ) {
+  statusCode: number;
+
+  constructor(message: string, statusCode: number = 500) {
     super(message);
     this.name = 'APIError';
+    this.statusCode = statusCode;
   }
 }
 
 // ============================================================================
-// UTILITY TYPES
+// LEARNING PLAN
 // ============================================================================
 
-export interface APIResponse<T = any> {
-  success: boolean;
-  data?: T;
-  error?: string;
-  message?: string;
+export interface LearningPlanItem {
+  id: number;
+  topics: Topic[];
+  status: 'pending' | 'in-progress' | 'completed';
+  questionsGenerated: number;
+  questionsCompleted: number;
+  createdAt: string;
+}
+
+// ============================================================================
+// MEMORY SYSTEM
+// ============================================================================
+
+export interface Memory {
+  id: string;
+  questionId: string;
+  topic: string;
+  subtopic: string;
+  difficulty: number;
+  lastReviewed: string;
+  nextReview: string;
+  repetitions: number;
+  easeFactor: number;
+  interval: number;
 }
