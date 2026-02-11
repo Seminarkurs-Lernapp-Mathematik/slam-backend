@@ -12,7 +12,7 @@
 
 import type { Context } from 'hono';
 import type { Env } from '../index';
-import type { Topic, UserContext, QuestionSession } from '../types';
+import type { Topic, UserContext, QuestionSession, Question, QuestionOption, QuestionHint, StepByStepData } from '../types';
 import { APIError } from '../types';
 
 // ============================================================================
@@ -208,7 +208,7 @@ ${afbLevel === 'III' ? '- Fokus auf Transfer und komplexe Problemlösung\n- Bewe
 ANZAHL FRAGEN: ${questionCount}
 `;
 
-  return `Du bist ein Mathematiklehrer für die ${userContext.gradeLevel}. Klasse (${userContext.courseType}).
+  return `Du bist ein erfahrener Mathematiklehrer für die ${userContext.gradeLevel}. Klasse (${userContext.courseType}).
 
 THEMEN:
 ${topicsList}
@@ -224,29 +224,295 @@ ${complexityInstructions}
 
 Generiere ${questionCount} mathematische Fragen zu den angegebenen Themen.
 
-WICHTIG: Antworte NUR mit einem JSON-Objekt in folgendem Format (kein zusätzlicher Text):
+ERLAUBTE FRAGETYPEN (NUR diese beiden):
+1. "multiple-choice" - Genau 4 Antwortmöglichkeiten (A, B, C, D), genau eine davon korrekt
+2. "step-by-step" - Zwei Varianten:
+   a) "next-action": Präsentiere ein mathematisches Szenario und frage nach dem nächsten Schritt (Multiple Choice für jeden Schritt)
+   b) "sort-steps": Gib durchmischte Lösungsschritte, die der Schüler in die richtige Reihenfolge bringen muss
 
+PFLICHTFELDER FÜR JEDE FRAGE:
+- "correctFeedback": Lobende, ermutigende Nachricht bei korrekter Antwort (auf Deutsch)
+- "incorrectFeedback": Erklärende Nachricht bei falscher Antwort mit Hinweis auf den Fehler (auf Deutsch)
+- "hints": GENAU 3 Hinweise, progressiv hilfreicher:
+  - Hinweis 1 (id: "h1"): Sanfter Anstoß in die richtige Richtung
+  - Hinweis 2 (id: "h2"): Spezifischere Anleitung
+  - Hinweis 3 (id: "h3"): Fast vollständiger Lösungsweg
+
+Nutze LaTeX für mathematische Formeln: $...$
+
+WICHTIG: Antworte NUR mit einem JSON-Objekt (kein zusätzlicher Text, kein Markdown-Code-Block).
+
+FORMAT FÜR "multiple-choice" Fragen:
 {
-  "questions": [
-    {
-      "id": "unique-id",
-      "type": "multiple-choice" | "fill-in" | "step-by-step",
-      "difficulty": 1-10,
-      "topic": "Hauptthema",
-      "subtopic": "Unterthema",
-      "question": "Die Frage (nutze LaTeX für Formeln: $...$)",
-      "hints": [
-        {"level": 1, "text": "Erster Hinweis"},
-        {"level": 2, "text": "Zweiter Hinweis"},
-        {"level": 3, "text": "Dritter Hinweis"}
-      ],
-      "solution": "Die Lösung",
-      "explanation": "Ausführliche Erklärung mit Lösungsweg",
-      "afbLevel": "${afbLevel}",
-      "requiresGeogebra": false
-    }
+  "id": "q1",
+  "type": "multiple-choice",
+  "difficulty": 1-10,
+  "topic": "Hauptthema",
+  "subtopic": "Unterthema",
+  "question": "Die Fragestellung",
+  "solution": "Die korrekte Lösung",
+  "explanation": "Ausführliche Erklärung des Lösungswegs",
+  "correctFeedback": "Perfekt! Du hast den Zusammenhang zwischen...",
+  "incorrectFeedback": "Nicht ganz. Der Fehler liegt darin, dass...",
+  "hints": [
+    {"id": "h1", "text": "Sanfter Hinweis..."},
+    {"id": "h2", "text": "Spezifischer Hinweis..."},
+    {"id": "h3", "text": "Fast die Lösung..."}
+  ],
+  "options": [
+    {"id": "a", "text": "Option A", "isCorrect": false},
+    {"id": "b", "text": "Option B", "isCorrect": true},
+    {"id": "c", "text": "Option C", "isCorrect": false},
+    {"id": "d", "text": "Option D", "isCorrect": false}
   ]
+}
+
+FORMAT FÜR "step-by-step" Fragen (sort-steps):
+{
+  "id": "q2",
+  "type": "step-by-step",
+  "difficulty": 1-10,
+  "topic": "Hauptthema",
+  "subtopic": "Unterthema",
+  "question": "Löse die Aufgabe, indem du die Schritte sortierst",
+  "solution": "Die vollständige Lösung",
+  "explanation": "Ausführliche Erklärung",
+  "correctFeedback": "Ausgezeichnet! Du hast die Schritte perfekt gemeistert!",
+  "incorrectFeedback": "Leider nicht richtig. Schaue dir die Reihenfolge nochmal an...",
+  "hints": [
+    {"id": "h1", "text": "Sanfter Hinweis..."},
+    {"id": "h2", "text": "Spezifischer Hinweis..."},
+    {"id": "h3", "text": "Fast die Lösung..."}
+  ],
+  "stepByStepData": {
+    "type": "sort-steps",
+    "steps": [
+      {"id": "s1", "text": "Erster Schritt"},
+      {"id": "s2", "text": "Zweiter Schritt"},
+      {"id": "s3", "text": "Dritter Schritt"},
+      {"id": "s4", "text": "Vierter Schritt"}
+    ],
+    "correctOrder": ["s1", "s2", "s3", "s4"]
+  }
+}
+
+FORMAT FÜR "step-by-step" Fragen (next-action):
+{
+  "id": "q3",
+  "type": "step-by-step",
+  "difficulty": 1-10,
+  "topic": "Hauptthema",
+  "subtopic": "Unterthema",
+  "question": "Was würdest du als nächstes tun?",
+  "solution": "Die vollständige Lösung",
+  "explanation": "Ausführliche Erklärung",
+  "correctFeedback": "Genau richtig! Das war der optimale nächste Schritt!",
+  "incorrectFeedback": "Das ist leider nicht der beste nächste Schritt...",
+  "hints": [
+    {"id": "h1", "text": "Sanfter Hinweis..."},
+    {"id": "h2", "text": "Spezifischer Hinweis..."},
+    {"id": "h3", "text": "Fast die Lösung..."}
+  ],
+  "stepByStepData": {
+    "type": "next-action",
+    "steps": [
+      {"id": "s1", "text": "Mögliche Aktion A"},
+      {"id": "s2", "text": "Mögliche Aktion B"},
+      {"id": "s3", "text": "Mögliche Aktion C"},
+      {"id": "s4", "text": "Mögliche Aktion D"}
+    ],
+    "correctOrder": ["s2"]
+  }
+}
+
+REGELN:
+- Generiere eine gute Mischung aus "multiple-choice" und "step-by-step" Fragen
+- Bei step-by-step: Verwende abwechselnd "sort-steps" und "next-action"
+- KEINE anderen Fragetypen als "multiple-choice" und "step-by-step"
+- IDs müssen eindeutig sein (q1, q2, q3, ...)
+- Bei multiple-choice: IMMER genau 4 Optionen mit genau einer korrekten
+- Bei sort-steps: Die steps-Liste soll BEREITS GEMISCHT sein, correctOrder gibt die richtige Reihenfolge an
+- Bei next-action: steps enthält die Wahlmöglichkeiten, correctOrder enthält die ID der korrekten Aktion
+- Alle Texte auf Deutsch
+- Schwierigkeitsgrad an AFB-Level ${afbLevel} anpassen
+
+Antworte mit genau diesem Format:
+{
+  "questions": [...]
 }`;
+}
+
+// ============================================================================
+// QUESTION VALIDATION & NORMALIZATION
+// ============================================================================
+
+function validateAndNormalizeQuestion(q: any, index: number): Question | null {
+  try {
+    const id = q.id || `q${index + 1}`;
+    const type = q.type;
+
+    // Only allow multiple-choice and step-by-step
+    if (type !== 'multiple-choice' && type !== 'step-by-step') {
+      console.warn(`[Validation] Skipping question ${id}: invalid type "${type}"`);
+      return null;
+    }
+
+    // Validate required base fields
+    if (!q.question || !q.solution) {
+      console.warn(`[Validation] Skipping question ${id}: missing question or solution`);
+      return null;
+    }
+
+    // Normalize hints: ensure exactly 3 hints with id format
+    const hints: QuestionHint[] = normalizeHints(q.hints);
+
+    // Ensure correctFeedback and incorrectFeedback exist
+    const correctFeedback = q.correctFeedback || 'Richtig! Gut gemacht!';
+    const incorrectFeedback = q.incorrectFeedback || 'Leider nicht richtig. Versuche es nochmal.';
+
+    // Build base question
+    const baseQuestion: Question = {
+      id,
+      type,
+      difficulty: Math.min(10, Math.max(1, Number(q.difficulty) || 5)),
+      topic: q.topic || 'Mathematik',
+      subtopic: q.subtopic || '',
+      question: q.question,
+      solution: q.solution,
+      explanation: q.explanation || '',
+      correctFeedback,
+      incorrectFeedback,
+      hints,
+    };
+
+    // Type-specific validation
+    if (type === 'multiple-choice') {
+      const options = normalizeMultipleChoiceOptions(q.options);
+      if (!options) {
+        console.warn(`[Validation] Skipping question ${id}: invalid multiple-choice options`);
+        return null;
+      }
+      baseQuestion.options = options;
+    } else if (type === 'step-by-step') {
+      const stepByStepData = normalizeStepByStepData(q.stepByStepData);
+      if (!stepByStepData) {
+        console.warn(`[Validation] Skipping question ${id}: invalid step-by-step data`);
+        return null;
+      }
+      baseQuestion.stepByStepData = stepByStepData;
+    }
+
+    return baseQuestion;
+  } catch (err) {
+    console.warn(`[Validation] Error processing question at index ${index}:`, err);
+    return null;
+  }
+}
+
+function normalizeHints(hints: any): QuestionHint[] {
+  const defaultHints: QuestionHint[] = [
+    { id: 'h1', text: 'Überlege dir, welcher Ansatz hier sinnvoll ist.' },
+    { id: 'h2', text: 'Versuche, die Aufgabe Schritt für Schritt zu lösen.' },
+    { id: 'h3', text: 'Schaue dir die Formel noch einmal genau an.' },
+  ];
+
+  if (!hints || !Array.isArray(hints) || hints.length === 0) {
+    return defaultHints;
+  }
+
+  // Normalize each hint to have id and text
+  const normalizedHints: QuestionHint[] = hints
+    .slice(0, 3)
+    .map((h: any, i: number) => ({
+      id: h.id || `h${i + 1}`,
+      text: h.text || (typeof h === 'string' ? h : `Hinweis ${i + 1}`),
+    }));
+
+  // Pad to exactly 3 hints if fewer were provided
+  while (normalizedHints.length < 3) {
+    const idx = normalizedHints.length;
+    normalizedHints.push(defaultHints[idx] || { id: `h${idx + 1}`, text: `Hinweis ${idx + 1}` });
+  }
+
+  return normalizedHints;
+}
+
+function normalizeMultipleChoiceOptions(options: any): QuestionOption[] | null {
+  if (!options || !Array.isArray(options) || options.length < 2) {
+    return null;
+  }
+
+  const optionIds = ['a', 'b', 'c', 'd'];
+
+  // Normalize to exactly 4 options
+  const normalized: QuestionOption[] = options.slice(0, 4).map((opt: any, i: number) => ({
+    id: opt.id || optionIds[i] || `opt${i + 1}`,
+    text: opt.text || `Option ${i + 1}`,
+    isCorrect: Boolean(opt.isCorrect),
+  }));
+
+  // Pad with dummy options if fewer than 4
+  while (normalized.length < 4) {
+    const idx = normalized.length;
+    normalized.push({
+      id: optionIds[idx] || `opt${idx + 1}`,
+      text: `Option ${String.fromCharCode(65 + idx)}`,
+      isCorrect: false,
+    });
+  }
+
+  // Ensure exactly one correct option
+  const correctCount = normalized.filter((o) => o.isCorrect).length;
+  if (correctCount === 0) {
+    // Mark the first option as correct if none is marked
+    normalized[0].isCorrect = true;
+  } else if (correctCount > 1) {
+    // Keep only the first correct option
+    let foundFirst = false;
+    for (const opt of normalized) {
+      if (opt.isCorrect) {
+        if (foundFirst) {
+          opt.isCorrect = false;
+        } else {
+          foundFirst = true;
+        }
+      }
+    }
+  }
+
+  return normalized;
+}
+
+function normalizeStepByStepData(data: any): StepByStepData | null {
+  if (!data || typeof data !== 'object') {
+    return null;
+  }
+
+  const type = data.type === 'next-action' ? 'next-action' : 'sort-steps';
+
+  if (!data.steps || !Array.isArray(data.steps) || data.steps.length < 2) {
+    return null;
+  }
+
+  const steps = data.steps.map((s: any, i: number) => ({
+    id: s.id || `s${i + 1}`,
+    text: s.text || `Schritt ${i + 1}`,
+  }));
+
+  // Validate correctOrder
+  let correctOrder: string[];
+  if (data.correctOrder && Array.isArray(data.correctOrder) && data.correctOrder.length > 0) {
+    correctOrder = data.correctOrder.map((id: any) => String(id));
+  } else {
+    // Default: use steps in their given order for sort-steps, first step for next-action
+    if (type === 'next-action') {
+      correctOrder = [steps[0].id];
+    } else {
+      correctOrder = steps.map((s: any) => s.id);
+    }
+  }
+
+  return { type, steps, correctOrder };
 }
 
 // ============================================================================
@@ -398,6 +664,17 @@ export async function handleGenerateQuestions(c: Context<{ Bindings: Env }>) {
         `Failed to parse AI response: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`,
         500
       );
+    }
+
+    // Validate and normalize questions to the new format
+    if (questionsData.questions && Array.isArray(questionsData.questions)) {
+      questionsData.questions = questionsData.questions
+        .map((q: any, index: number) => validateAndNormalizeQuestion(q, index))
+        .filter((q: any) => q !== null);
+    }
+
+    if (!questionsData.questions || questionsData.questions.length === 0) {
+      throw new APIError('AI response contained no valid questions after validation', 500);
     }
 
     // ========================================================================

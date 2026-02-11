@@ -34,7 +34,30 @@ export interface UserContext {
 // QUESTION TYPES
 // ============================================================================
 
-export type QuestionType = 'multiple-choice' | 'fill-in' | 'step-by-step' | 'free-form' | 'numeric';
+export type QuestionType = 'multiple-choice' | 'step-by-step';
+export type StepByStepType = 'next-action' | 'sort-steps';
+
+export interface QuestionHint {
+  id: string;
+  text: string;
+}
+
+export interface QuestionOption {
+  id: string;
+  text: string;
+  isCorrect: boolean;
+}
+
+export interface StepByStepStep {
+  id: string;
+  text: string;
+}
+
+export interface StepByStepData {
+  type: StepByStepType;
+  steps: StepByStepStep[];
+  correctOrder: string[];
+}
 
 export interface Question {
   id: string;
@@ -43,27 +66,14 @@ export interface Question {
   topic: string;
   subtopic: string;
   question: string;
-  hints: Array<{
-    level: number;
-    text: string;
-  }>;
   solution: string;
   explanation: string;
-  afbLevel: 'I' | 'II' | 'III';
-  requiresGeogebra: boolean;
-  options?: Array<{
-    id: string;
-    text: string;
-    isCorrect?: boolean;
-  }>;
-  steps?: Array<{
-    stepNumber: number;
-    expectedAnswer: string;
-    tolerance?: number;
-  }>;
-  correctAnswer?: string;
-  expectedAnswer?: string;
-  tolerance?: number;
+  correctFeedback: string;
+  incorrectFeedback: string;
+  hints: QuestionHint[];
+  options?: QuestionOption[];
+  stepByStepData?: StepByStepData;
+  afbLevel?: 'I' | 'II' | 'III';
 }
 
 export interface QuestionSession {
