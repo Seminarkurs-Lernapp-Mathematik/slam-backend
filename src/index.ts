@@ -7,6 +7,7 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { handleGenerateQuestions } from './api/generate-questions';
 import { handleEvaluateAnswer } from './api/evaluate-answer';
+import { handleGetModels } from './api/get-models';
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -63,6 +64,7 @@ app.get('/', (c) => {
     status: 'healthy',
     timestamp: new Date().toISOString(),
     endpoints: [
+      'GET /api/get-models',
       'POST /api/generate-questions',
       'POST /api/evaluate-answer',
       'POST /api/update-auto-mode',
@@ -79,6 +81,7 @@ app.get('/', (c) => {
 // API Endpoints (Migrated from Cloudflare Pages Functions)
 app.post('/api/generate-questions', handleGenerateQuestions);
 app.post('/api/evaluate-answer', handleEvaluateAnswer);
+app.get('/api/get-models', handleGetModels);
 
 // TODO: Migrate remaining endpoints
 app.post('/api/update-auto-mode', (c) => c.json({ success: true, message: 'Stub - not yet migrated' }));
