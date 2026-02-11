@@ -8,6 +8,9 @@ import { cors } from 'hono/cors';
 import { handleGenerateQuestions } from './api/generate-questions';
 import { handleEvaluateAnswer } from './api/evaluate-answer';
 import { handleGetModels } from './api/get-models';
+import { handleGenerateMiniApp } from './api/generate-mini-app';
+import { handleGenerateGeogebra } from './api/generate-geogebra';
+import { handleCustomHint } from './api/custom-hint';
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -83,11 +86,13 @@ app.post('/api/generate-questions', handleGenerateQuestions);
 app.post('/api/evaluate-answer', handleEvaluateAnswer);
 app.get('/api/get-models', handleGetModels);
 
+// Migrated endpoints
+app.post('/api/custom-hint', handleCustomHint);
+app.post('/api/generate-geogebra', handleGenerateGeogebra);
+app.post('/api/generate-mini-app', handleGenerateMiniApp);
+
 // TODO: Migrate remaining endpoints
 app.post('/api/update-auto-mode', (c) => c.json({ success: true, message: 'Stub - not yet migrated' }));
-app.post('/api/custom-hint', (c) => c.json({ success: true, message: 'Stub - not yet migrated' }));
-app.post('/api/generate-geogebra', (c) => c.json({ success: true, message: 'Stub - not yet migrated' }));
-app.post('/api/generate-mini-app', (c) => c.json({ success: true, message: 'Stub - not yet migrated' }));
 app.post('/api/manage-learning-plan', (c) => c.json({ success: true, message: 'Stub - not yet migrated' }));
 app.post('/api/manage-memories', (c) => c.json({ success: true, message: 'Stub - not yet migrated' }));
 app.post('/api/analyze-image', (c) => c.json({ success: true, message: 'Stub - not yet migrated' }));
