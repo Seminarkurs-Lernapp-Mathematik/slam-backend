@@ -1,12 +1,12 @@
 /**
  * Generate GeoGebra Commands Endpoint
- * Uses AI to generate GeoGebra commands for mathematical visualizations
+ * Generates GeoGebra commands for mathematical visualizations
  *
  * Features:
  * - Multi-provider support (Claude, Gemini)
  * - Generates valid GeoGebra syntax commands
- * - Provides explanation of the visualization
- * - Supports topic-based or question-based generation
+ * - Topic-based or prompt-based generation
+ * - Educational explanations
  */
 
 import type { Context } from 'hono';
@@ -21,9 +21,17 @@ interface GenerateGeogebraRequest {
   questionText?: string;
   topic?: string;
   userPrompt?: string;
-  apiKey?: string;
+  apiKey: string;
   provider?: 'claude' | 'gemini';
   selectedModel?: string;
+  gradeLevel?: string;
+}
+
+interface GeoGebraResult {
+  commands: string[];
+  explanation: string;
+  title: string;
+  suggestedZoom?: number;
 }
 
 // ============================================================================
@@ -49,6 +57,14 @@ const AI_ENDPOINTS = {
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
+
+function selectModel(
+  provider: 'claude' | 'gemini',
+  preferredModel?: string
+): string {
+  if (preferredModel) return preferredModel;
+  return MODEL_TIERS[provider].standard;
+}
 
 async function callAIProvider({
   provider,
@@ -116,46 +132,121 @@ async function callAIProvider({
   }
 }
 
-function buildGeogebraPrompt(questionText?: string, topic?: string, userPrompt?: string): string {
-  const context = questionText
-    ? `AUFGABE: ${questionText}`
-    : topic
-    ? `THEMA: ${topic}`
-    : userPrompt
-    ? `BENUTZERANFRAGE: ${userPrompt}`
-    : 'THEMA: Allgemeine mathematische Visualisierung';
+function buildPrompt(params: {
+  questionText?: string;
+  topic?: string;
+  userPrompt?: string;
+  gradeLevel?: string;
+}): string {
+  const { questionText, topic, userPrompt, gradeLevel } = params;
+  
+  let context = '';
+  if (questionText) {
+    context += `AUFGABE: ${questionText}\n`;
+  }
+  if (topic) {
+    context += `THEMA: ${topic}\n`;
+  }
+  if (userPrompt) {
+    context += `WUNSCH: ${userPrompt}\n`;
+  }
 
-  return `Du bist ein Experte für GeoGebra und mathematische Visualisierungen. Erstelle GeoGebra-Befehle für eine mathematische Visualisierung.
+  return `Du bist ein Experte für GeoGebra und mathematische Visualisierung.
 
 ${context}
+KLASSENSTUFE: ${gradeLevel || 'Oberstufe'}
 
-ANFORDERUNGEN:
-- Erstelle eine Liste von GeoGebra-Befehlen, die eine hilfreiche mathematische Visualisierung erzeugen
-- Verwende ausschliesslich gueltige GeoGebra-Syntax
-- Die Befehle sollen in der richtigen Reihenfolge stehen (Definitionen vor Verwendungen)
-- Erstelle eine klare, uebersichtliche Visualisierung
-- Verwende Farben und Beschriftungen fuer bessere Lesbarkeit
+Erstelle GeoGebra-Befehle für eine passende Visualisierung.
 
-GUELTIGE GEOGEBRA-BEFEHLSBEISPIELE:
-- Funktionen: f(x) = x^2, g(x) = sin(x), h(x) = 2*x + 3
-- Punkte: A = (1, 2), B = (-3, 4)
-- Geraden: Gerade[A, B]
-- Kreise: Kreis[(0, 0), 3]
-- Vektoren: v = Vektor[(0, 0), (3, 4)]
-- Winkel: Winkel[A, B, C]
-- Tangenten: Tangente[A, f]
-- Ableitungen: f'(x) = Ableitung[f]
-- Integrale: Integral[f, a, b]
-- Farben setzen: SetzeKFarbe[f, "Blau"]
-- Beschriftungen: SetzeBezeichnung[A, "Punkt A"]
-- Sichtbarkeit: ZeigeBezeichnung[A, true]
+VERFÜGBARE GEOGEBRA-BEFEHLE:
+- Grundlegende Objekte: Point, Line, Segment, Circle, Polygon
+- Funktionen: f(x) = ..., g: y = ...
+- Transformationen: Mirror, Rotate, Translate, Dilate
+- Messungen: Distance, Angle, Area, Length
+- Analyse: Intersect, Root, Extremum, InflectionPoint
+- Darstellung: Slider, Checkbox, InputBox
+- Styling: SetColor, SetLineThickness, SetPointSize, SetVisibleInView
+- Ansicht: ZoomIn, Pan, ShowAxes, ShowGrid
 
-WICHTIG: Antworte NUR mit einem JSON-Objekt (kein zusaetzlicher Text, kein Markdown-Code-Block).
+BEFEHLS-SYNTAX:
+- Punkte: A = (1, 2) oder A = (0, 0)
+- Funktionen: f(x) = x^2 + 3*x - 2
+- Geraden: g: y = 2*x + 1
+- Kreise: c = Circle(A, 2)
+- Slider: a = Slider(0, 10)
+- Farben: SetColor(f, "red") oder RGB-Werte
 
+WICHTIGE REGELN:
+1. Verwende nur gültige GeoGebra-Syntax
+2. Erstelle sinnvolle Achsen-Skalierung (ZoomIn wenn nötig)
+3. Füge Beschriftungen hinzu (Text-Befehl)
+4. Verwende unterschiedliche Farben für verschiedene Objekte
+5. Füge Slider für interaktive Parameter ein (wo sinnvoll)
+6. Begrenze auf maximal 20 Befehle für Übersichtlichkeit
+
+ANTWORTFORMAT - JSON:
 {
-  "commands": ["Befehl1", "Befehl2", "..."],
-  "explanation": "Erklaerung der Visualisierung auf Deutsch"
-}`;
+  "title": "Titel der Visualisierung",
+  "explanation": "Erklärung der Visualisierung für Schüler",
+  "commands": [
+    "Befehl 1",
+    "Befehl 2",
+    "..."
+  ],
+  "suggestedZoom": 5
+}
+
+Beispiele für gültige Befehle:
+- "A = (0, 0)"
+- "f(x) = x^2"
+- "g: y = 2*x + 1"
+- "c = Circle(A, 3)"
+- "SetColor(f, \"blue\")"
+- "ZoomIn(5)"
+- "ShowGrid(true)"
+
+WICHTIG: Antworte NUR mit dem JSON-Objekt, keine zusätzlichen Erklärungen.`;
+}
+
+function extractJSONFromResponse(text: string): any {
+  // Try to find JSON in the response
+  const jsonMatch = text.match(/\{[\s\S]*\}/);
+  if (jsonMatch) {
+    try {
+      return JSON.parse(jsonMatch[0]);
+    } catch (e) {
+      // Continue to other methods
+    }
+  }
+  
+  // Try parsing the whole text
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    throw new Error('Could not parse JSON from AI response');
+  }
+}
+
+function validateAndNormalizeCommands(data: any): GeoGebraResult {
+  if (!data.commands || !Array.isArray(data.commands)) {
+    throw new APIError('Invalid response: commands must be an array', 500);
+  }
+
+  // Filter out empty commands and normalize
+  const commands = data.commands
+    .map((cmd: any) => String(cmd).trim())
+    .filter((cmd: string) => cmd.length > 0);
+
+  if (commands.length === 0) {
+    throw new APIError('No valid commands generated', 500);
+  }
+
+  return {
+    commands,
+    explanation: data.explanation || 'Visualisierung der mathematischen Konzepte',
+    title: data.title || 'GeoGebra Visualisierung',
+    suggestedZoom: data.suggestedZoom || 5,
+  };
 }
 
 // ============================================================================
@@ -164,89 +255,95 @@ WICHTIG: Antworte NUR mit einem JSON-Objekt (kein zusaetzlicher Text, kein Markd
 
 export async function handleGenerateGeogebra(c: Context<{ Bindings: Env }>) {
   try {
-    const body = await c.req.json<GenerateGeogebraRequest>();
+    const body = await c.req.json<Partial<GenerateGeogebraRequest>>();
 
-    // Validate: at least one context field and an API key must be provided
-    const { questionText, topic, userPrompt, apiKey, selectedModel } = body;
-    if (!questionText && !topic && !userPrompt) {
-      throw new APIError('At least one of questionText, topic, or userPrompt is required', 400);
-    }
-
+    // Validate required fields
+    const { apiKey } = body;
     if (!apiKey) {
       throw new APIError('Missing required field: apiKey', 400);
     }
 
-    // Determine provider and model
+    // Need at least one of: questionText, topic, userPrompt
+    if (!body.questionText && !body.topic && !body.userPrompt) {
+      throw new APIError('Missing context: provide questionText, topic, or userPrompt', 400);
+    }
+
     const provider = body.provider || 'claude';
-    const model = selectedModel || MODEL_TIERS[provider]?.standard || MODEL_TIERS.claude.standard;
+    const selectedModel = body.selectedModel;
+    const gradeLevel = body.gradeLevel;
 
-    console.log(`[generate-geogebra] Request: provider=${provider}, model=${model}, topic="${topic || questionText?.substring(0, 50) || userPrompt?.substring(0, 50)}"`);
+    console.log('[generate-geogebra] Request:', {
+      provider,
+      hasQuestionText: !!body.questionText,
+      hasTopic: !!body.topic,
+      hasUserPrompt: !!body.userPrompt,
+    });
 
-    // Build prompt and call AI
-    const prompt = buildGeogebraPrompt(questionText, topic, userPrompt);
+    // =======================================================================
+    // PHASE 1: Select model
+    // =======================================================================
+
+    const model = selectModel(provider, selectedModel);
+    console.log(`[Model Router] Selected ${model} for ${provider}`);
+
+    // =======================================================================
+    // PHASE 2: Build prompt and call AI
+    // =======================================================================
+
+    const prompt = buildPrompt({
+      questionText: body.questionText,
+      topic: body.topic,
+      userPrompt: body.userPrompt,
+      gradeLevel,
+    });
+
+    const temperature = 0.6; // Lower for more consistent syntax
 
     const responseText = await callAIProvider({
       provider,
       apiKey,
       model,
       prompt,
-      temperature: 0.5,
+      temperature,
       maxTokens: 4000,
     });
 
-    // Parse the AI response
-    let commands: string[] = [];
-    let explanation = '';
+    // =======================================================================
+    // PHASE 3: Parse and validate response
+    // =======================================================================
 
+    let geogebraData: any;
     try {
-      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        commands = Array.isArray(parsed.commands) ? parsed.commands : [];
-        explanation = parsed.explanation || '';
-      } else {
-        throw new Error('No JSON object found in response');
-      }
+      geogebraData = extractJSONFromResponse(responseText);
     } catch (parseError) {
-      // Fallback: try to extract commands line by line
-      console.warn('[generate-geogebra] JSON parse failed, attempting line extraction');
-
-      const lines = responseText.split('\n')
-        .map((line: string) => line.trim())
-        .filter((line: string) => {
-          // Filter for lines that look like GeoGebra commands
-          return line.length > 0
-            && !line.startsWith('//')
-            && !line.startsWith('#')
-            && !line.startsWith('{')
-            && !line.startsWith('}')
-            && !line.startsWith('"')
-            && (line.includes('=') || line.includes('(') || line.includes('['));
-        });
-
-      commands = lines;
-      explanation = 'Automatisch extrahierte GeoGebra-Befehle.';
+      console.error('[generate-geogebra] Parse error:', parseError);
+      console.error('[generate-geogebra] Raw response:', responseText.substring(0, 500));
+      throw new APIError('Failed to parse AI response as JSON', 500);
     }
 
-    // Filter out any empty or invalid commands
-    commands = commands.filter((cmd: string) => cmd && cmd.trim().length > 0);
+    const result = validateAndNormalizeCommands(geogebraData);
 
-    if (commands.length === 0) {
-      throw new APIError('AI response did not contain valid GeoGebra commands', 500);
-    }
+    console.log('[generate-geogebra] Success:', {
+      title: result.title,
+      commandCount: result.commands.length,
+    });
 
-    console.log(`[generate-geogebra] Success: ${commands.length} commands generated`);
+    // =======================================================================
+    // PHASE 4: Return response
+    // =======================================================================
 
     return c.json({
       success: true,
-      commands,
-      explanation,
+      ...result,
+      modelUsed: model,
+      providerUsed: provider,
     });
+
   } catch (error) {
     console.error('[generate-geogebra] Error:', error);
 
     if (error instanceof APIError) {
-      return c.json({ success: false, error: error.message }, error.statusCode as any);
+      return c.json({ success: false, error: error.message }, error.statusCode);
     }
 
     return c.json(
@@ -255,7 +352,7 @@ export async function handleGenerateGeogebra(c: Context<{ Bindings: Env }>) {
         error: 'Internal server error',
         message: error instanceof Error ? error.message : 'Unknown error',
       },
-      500 as any
+      500
     );
   }
 }

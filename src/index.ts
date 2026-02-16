@@ -8,9 +8,14 @@ import { cors } from 'hono/cors';
 import { handleGenerateQuestions } from './api/generate-questions';
 import { handleEvaluateAnswer } from './api/evaluate-answer';
 import { handleGetModels } from './api/get-models';
+import { handleCustomHint } from './api/custom-hint';
 import { handleGenerateMiniApp } from './api/generate-mini-app';
 import { handleGenerateGeogebra } from './api/generate-geogebra';
-import { handleCustomHint } from './api/custom-hint';
+import { handlePurchase } from './api/purchase';
+import { handleAnalyzeImage } from './api/analyze-image';
+import { handleManageMemories } from './api/manage-memories';
+import { handleUpdateAutoMode } from './api/update-auto-mode';
+import { handleManageLearningPlan } from './api/manage-learning-plan';
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -62,7 +67,7 @@ app.get('/', (c) => {
   const env = c.env.ENVIRONMENT || 'unknown';
   return c.json({
     service: 'SLAM Backend API',
-    version: '1.0.0',
+    version: '1.1.0',
     environment: env,
     status: 'healthy',
     timestamp: new Date().toISOString(),
@@ -77,25 +82,30 @@ app.get('/', (c) => {
       'POST /api/manage-learning-plan',
       'POST /api/manage-memories',
       'POST /api/analyze-image',
+      'POST /api/purchase',
     ],
   });
 });
 
-// API Endpoints (Migrated from Cloudflare Pages Functions)
+// API Endpoints
+// Core
 app.post('/api/generate-questions', handleGenerateQuestions);
 app.post('/api/evaluate-answer', handleEvaluateAnswer);
 app.get('/api/get-models', handleGetModels);
-
-// Migrated endpoints
 app.post('/api/custom-hint', handleCustomHint);
-app.post('/api/generate-geogebra', handleGenerateGeogebra);
-app.post('/api/generate-mini-app', handleGenerateMiniApp);
 
-// TODO: Migrate remaining endpoints
-app.post('/api/update-auto-mode', (c) => c.json({ success: true, message: 'Stub - not yet migrated' }));
-app.post('/api/manage-learning-plan', (c) => c.json({ success: true, message: 'Stub - not yet migrated' }));
-app.post('/api/manage-memories', (c) => c.json({ success: true, message: 'Stub - not yet migrated' }));
-app.post('/api/analyze-image', (c) => c.json({ success: true, message: 'Stub - not yet migrated' }));
+// Generative Apps
+app.post('/api/generate-mini-app', handleGenerateMiniApp);
+app.post('/api/generate-geogebra', handleGenerateGeogebra);
+
+// Learning & Memory
+app.post('/api/update-auto-mode', handleUpdateAutoMode);
+app.post('/api/manage-learning-plan', handleManageLearningPlan);
+app.post('/api/manage-memories', handleManageMemories);
+
+// Image & Purchase
+app.post('/api/analyze-image', handleAnalyzeImage);
+app.post('/api/purchase', handlePurchase);
 
 // 404 Handler
 app.notFound((c) => {

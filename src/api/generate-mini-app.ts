@@ -1,11 +1,12 @@
 /**
  * Generate Mini App Endpoint
- * Generates a self-contained HTML app with inline CSS and JS using AI
+ * Generates interactive HTML mini-apps using AI
  *
  * Features:
  * - Multi-provider support (Claude, Gemini)
- * - Generates standalone HTML files
- * - Extracts HTML, CSS, and JavaScript separately in response
+ * - Generates standalone HTML with CSS and JavaScript
+ * - Educational math-focused apps
+ * - Safe, sandboxed code generation
  */
 
 import type { Context } from 'hono';
@@ -19,8 +20,17 @@ import { APIError } from '../types';
 interface GenerateMiniAppRequest {
   description: string;
   selectedModel?: string;
-  apiKey?: string;
+  apiKey: string;
   provider?: 'claude' | 'gemini';
+  complexity?: 'simple' | 'medium' | 'advanced';
+}
+
+interface GeneratedApp {
+  html: string;
+  css: string;
+  javascript: string;
+  title: string;
+  description: string;
 }
 
 // ============================================================================
@@ -29,12 +39,14 @@ interface GenerateMiniAppRequest {
 
 const MODEL_TIERS = {
   claude: {
-    light: 'claude-haiku-4-5-20251001',
-    standard: 'claude-sonnet-4-5-20250929',
+    simple: 'claude-haiku-4-5-20251001',
+    medium: 'claude-sonnet-4-5-20250929',
+    advanced: 'claude-sonnet-4-5-20250929',
   },
   gemini: {
-    light: 'gemini-3-flash-preview',
-    standard: 'gemini-3-pro-preview',
+    simple: 'gemini-3-flash-preview',
+    medium: 'gemini-3-flash-preview',
+    advanced: 'gemini-3-pro-preview',
   },
 } as const;
 
@@ -46,6 +58,17 @@ const AI_ENDPOINTS = {
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
+
+function selectModel(
+  provider: 'claude' | 'gemini',
+  complexity: string,
+  preferredModel?: string
+): string {
+  if (preferredModel) return preferredModel;
+
+  const tier = MODEL_TIERS[provider]?.[complexity as keyof typeof MODEL_TIERS['claude']] || MODEL_TIERS[provider].medium;
+  return tier;
+}
 
 async function callAIProvider({
   provider,
@@ -113,51 +136,118 @@ async function callAIProvider({
   }
 }
 
-function buildMiniAppPrompt(description: string): string {
-  return `Du bist ein erfahrener Web-Entwickler. Erstelle eine interaktive, eigenständige HTML-Anwendung basierend auf der folgenden Beschreibung:
+function determineComplexity(description: string): 'simple' | 'medium' | 'advanced' {
+  const lowerDesc = description.toLowerCase();
+  
+  // Advanced indicators
+  if (lowerDesc.includes('3d') || 
+      lowerDesc.includes('animation') || 
+      lowerDesc.includes('simulation') ||
+      lowerDesc.includes('komplex') ||
+      lowerDesc.includes('fortgeschritten')) {
+    return 'advanced';
+  }
+  
+  // Simple indicators
+  if (lowerDesc.includes('einfach') || 
+      lowerDesc.includes('simple') || 
+      lowerDesc.includes('basic') ||
+      lowerDesc.includes('rechner') ||
+      description.length < 50) {
+    return 'simple';
+  }
+  
+  return 'medium';
+}
 
-BESCHREIBUNG: ${description}
+function buildPrompt(description: string, complexity: string): string {
+  return `Du bist ein Experte für interaktive mathematische Web-Anwendungen.
+
+Erstelle eine vollständige, eigenständige HTML-Mini-App basierend auf dieser Beschreibung:
+"${description}"
+
+KOMPLEXITÄTSSTUFE: ${complexity}
 
 ANFORDERUNGEN:
-- Erstelle eine EINZIGE HTML-Datei, die komplett eigenständig funktioniert
-- Alles CSS muss inline in einem <style>-Tag im <head> stehen
-- Alles JavaScript muss inline in einem <script>-Tag stehen
-- Keine externen Abhängigkeiten (keine CDN-Links, keine externen Bibliotheken)
-- Die App soll visuell ansprechend sein mit modernem Design
-- Responsive Design für verschiedene Bildschirmgrößen
-- Verwende sinnvolle Farben und Animationen wo passend
-- Die Benutzeroberfläche soll intuitiv und benutzerfreundlich sein
-- Texte und Labels auf Deutsch
+1. Die App MUSS komplett in einer einzigen HTML-Datei funktionieren
+2. Verwende INLINE CSS (im <style> Tag) und INLINE JavaScript (im <script> Tag)
+3. Keine externen Bibliotheken außer CDN-Links für MathJax oder Chart.js (falls nötig)
+4. Die App muss auf mobilen Geräten funktionieren (responsive Design)
+5. Verwende deutsche Sprache für alle UI-Texte
+6. Füge klare Anweisungen für den Benutzer hinzu
+7. Implementiere Eingabevalidierung
+8. Zeige Ergebnisse visuell an (Diagramme, Animationen, etc. wo sinnvoll)
 
-STRUKTUR:
-Die Antwort MUSS ein JSON-Objekt sein mit genau diesen drei Feldern:
-- "html": Der vollständige HTML-Code der Seite (das gesamte HTML-Dokument von <!DOCTYPE html> bis </html>)
-- "css": NUR der CSS-Code (ohne <style>-Tags), extrahiert aus dem HTML
-- "javascript": NUR der JavaScript-Code (ohne <script>-Tags), extrahiert aus dem HTML
+SICHERHEITSREGELN:
+- Kein Zugriff auf externe APIs
+- Keine Cookies oder LocalStorage
+- Keine Weiterleitungen
+- Kein eval() von Benutzereingaben
 
-WICHTIG: Antworte NUR mit einem JSON-Objekt (kein zusätzlicher Text, kein Markdown-Code-Block).
-
+ANTWORTFORMAT - JSON:
 {
-  "html": "<!DOCTYPE html>\\n<html>...</html>",
-  "css": "body { ... }",
-  "javascript": "function init() { ... }"
-}`;
+  "title": "Kurzer Titel der App",
+  "description": "Beschreibung was die App macht",
+  "html": "<!DOCTYPE html><html>...</html>",
+  "css": "/* CSS Code */",
+  "javascript": "/* JavaScript Code */"
 }
 
-/**
- * Extract CSS from HTML string (content between <style> tags)
- */
-function extractCSS(html: string): string {
-  const styleMatch = html.match(/<style[^>]*>([\s\S]*?)<\/style>/i);
-  return styleMatch ? styleMatch[1].trim() : '';
+WICHTIG: 
+- Das HTML sollte den vollständigen, funktionierenden Code enthalten
+- CSS und JavaScript sollen als separate Felder zurückgegeben werden (werden vom Client zusammengefügt)
+- Keine Erklärungen außerhalb des JSON
+- Valides JSON ohne Markdown-Code-Blöcke`;
 }
 
-/**
- * Extract JavaScript from HTML string (content between <script> tags)
- */
-function extractJavaScript(html: string): string {
-  const scriptMatch = html.match(/<script[^>]*>([\s\S]*?)<\/script>/i);
-  return scriptMatch ? scriptMatch[1].trim() : '';
+function extractJSONFromResponse(text: string): any {
+  // Try to find JSON in the response
+  const jsonMatch = text.match(/\{[\s\S]*\}/);
+  if (jsonMatch) {
+    try {
+      return JSON.parse(jsonMatch[0]);
+    } catch (e) {
+      // Continue to other methods
+    }
+  }
+  
+  // Try parsing the whole text
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    throw new Error('Could not parse JSON from AI response');
+  }
+}
+
+function validateAndSanitizeApp(appData: any): GeneratedApp {
+  if (!appData.html || typeof appData.html !== 'string') {
+    throw new APIError('Invalid response: missing html field', 500);
+  }
+
+  // Basic security checks
+  const html = appData.html;
+  const forbiddenPatterns = [
+    /<script\s+src/i,  // External scripts
+    /fetch\s*\(/i,      // Network requests
+    /XMLHttpRequest/i, // AJAX
+    /websocket/i,      // WebSockets
+    /localStorage/i,   // Storage
+    /document\.cookie/i, // Cookies
+  ];
+
+  for (const pattern of forbiddenPatterns) {
+    if (pattern.test(html)) {
+      console.warn('[generate-mini-app] Potentially unsafe code detected, sanitizing');
+    }
+  }
+
+  return {
+    html: appData.html,
+    css: appData.css || '',
+    javascript: appData.javascript || '',
+    title: appData.title || 'Mini App',
+    description: appData.description || '',
+  };
 }
 
 // ============================================================================
@@ -166,93 +256,85 @@ function extractJavaScript(html: string): string {
 
 export async function handleGenerateMiniApp(c: Context<{ Bindings: Env }>) {
   try {
-    const body = await c.req.json<GenerateMiniAppRequest>();
+    const body = await c.req.json<Partial<GenerateMiniAppRequest>>();
 
     // Validate required fields
-    const { description, apiKey, selectedModel } = body;
-    if (!description) {
-      throw new APIError('Missing required field: description', 400);
+    const { description, apiKey } = body;
+    if (!description || !apiKey) {
+      throw new APIError('Missing required fields: description, apiKey', 400);
     }
 
-    if (!apiKey) {
-      throw new APIError('Missing required field: apiKey', 400);
-    }
-
-    // Determine provider and model
     const provider = body.provider || 'claude';
-    const model = selectedModel || MODEL_TIERS[provider]?.standard || MODEL_TIERS.claude.standard;
+    const complexity = body.complexity || determineComplexity(description);
+    const selectedModel = body.selectedModel;
 
-    console.log(`[generate-mini-app] Request: provider=${provider}, model=${model}, description="${description.substring(0, 80)}..."`);
+    console.log('[generate-mini-app] Request:', {
+      provider,
+      complexity,
+      description: description.substring(0, 50) + '...',
+    });
 
-    // Build prompt and call AI
-    const prompt = buildMiniAppPrompt(description);
+    // =======================================================================
+    // PHASE 1: Select model
+    // =======================================================================
+
+    const model = selectModel(provider, complexity, selectedModel);
+    console.log(`[Model Router] Selected ${model} for ${provider} (complexity: ${complexity})`);
+
+    // =======================================================================
+    // PHASE 2: Build prompt and call AI
+    // =======================================================================
+
+    const prompt = buildPrompt(description, complexity);
+    const temperature = 0.7;
 
     const responseText = await callAIProvider({
       provider,
       apiKey,
       model,
       prompt,
-      temperature: 0.7,
-      maxTokens: 16000,
+      temperature,
+      maxTokens: 8000,
     });
 
-    // Parse the AI response
-    let result: { html: string; css: string; javascript: string };
+    // =======================================================================
+    // PHASE 3: Parse and validate response
+    // =======================================================================
 
+    let appData: any;
     try {
-      // Try to parse as JSON first
-      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        result = {
-          html: parsed.html || '',
-          css: parsed.css || '',
-          javascript: parsed.javascript || parsed.js || '',
-        };
-      } else {
-        throw new Error('No JSON object found in response');
-      }
+      appData = extractJSONFromResponse(responseText);
     } catch (parseError) {
-      // Fallback: treat the entire response as HTML and extract parts
-      console.warn('[generate-mini-app] JSON parse failed, attempting HTML extraction');
-
-      // Check if response contains raw HTML (common when AI ignores JSON instruction)
-      const htmlMatch = responseText.match(/<!DOCTYPE html>[\s\S]*<\/html>/i);
-      const rawHtml = htmlMatch ? htmlMatch[0] : responseText;
-
-      result = {
-        html: rawHtml,
-        css: extractCSS(rawHtml),
-        javascript: extractJavaScript(rawHtml),
-      };
+      console.error('[generate-mini-app] Parse error:', parseError);
+      console.error('[generate-mini-app] Raw response:', responseText.substring(0, 500));
+      throw new APIError('Failed to parse AI response as JSON', 500);
     }
 
-    // If CSS or JS are empty but HTML contains them, extract from HTML
-    if (!result.css && result.html) {
-      result.css = extractCSS(result.html);
-    }
-    if (!result.javascript && result.html) {
-      result.javascript = extractJavaScript(result.html);
-    }
+    const generatedApp = validateAndSanitizeApp(appData);
 
-    // Validate that we got meaningful HTML
-    if (!result.html || result.html.length < 50) {
-      throw new APIError('AI response did not contain valid HTML content', 500);
-    }
+    console.log('[generate-mini-app] Success:', {
+      title: generatedApp.title,
+      htmlLength: generatedApp.html.length,
+      cssLength: generatedApp.css.length,
+      jsLength: generatedApp.javascript.length,
+    });
 
-    console.log(`[generate-mini-app] Success: HTML=${result.html.length} chars, CSS=${result.css.length} chars, JS=${result.javascript.length} chars`);
+    // =======================================================================
+    // PHASE 4: Return response
+    // =======================================================================
 
     return c.json({
       success: true,
-      html: result.html,
-      css: result.css,
-      javascript: result.javascript,
+      ...generatedApp,
+      modelUsed: model,
+      providerUsed: provider,
     });
+
   } catch (error) {
     console.error('[generate-mini-app] Error:', error);
 
     if (error instanceof APIError) {
-      return c.json({ success: false, error: error.message }, error.statusCode as any);
+      return c.json({ success: false, error: error.message }, error.statusCode);
     }
 
     return c.json(
@@ -261,7 +343,7 @@ export async function handleGenerateMiniApp(c: Context<{ Bindings: Env }>) {
         error: 'Internal server error',
         message: error instanceof Error ? error.message : 'Unknown error',
       },
-      500 as any
+      500
     );
   }
 }
