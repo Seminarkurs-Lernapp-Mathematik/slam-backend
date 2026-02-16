@@ -83,10 +83,13 @@ async function getUserStats(
   const data: any = await response.json();
   const fields = data.fields || {};
 
+  // Stats are stored in a nested 'stats' object in Firestore
+  const statsFields = fields.stats?.mapValue?.fields || {};
+
   return {
-    coins: fields.coins?.integerValue || fields.coins?.doubleValue || 0,
-    streakFreezes: fields.streakFreezes?.integerValue || 0,
-    unlockedThemes: fields.unlockedThemes?.arrayValue?.values?.map((v: any) => v.stringValue) || ['sunsetOrange'],
+    coins: statsFields.coins?.integerValue || statsFields.coins?.doubleValue || 0,
+    streakFreezes: statsFields.streakFreezes?.integerValue || 0,
+    unlockedThemes: statsFields.unlockedThemes?.arrayValue?.values?.map((v: any) => v.stringValue) || ['sunsetOrange'],
   };
 }
 
@@ -100,24 +103,30 @@ async function updateUserAfterPurchase(
   currentUnlockedThemes: string[],
   currentStreakFreezes: number
 ): Promise<void> {
-  const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/users/${userId}?updateMask.fieldPaths=coins&updateMask.fieldPaths=unlockedThemes&updateMask.fieldPaths=streakFreezes&updateMask.fieldPaths=lastPurchaseAt`;
+  const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/users/${userId}?updateMask.fieldPaths=stats.coins&updateMask.fieldPaths=stats.unlockedThemes&updateMask.fieldPaths=stats.streakFreezes&updateMask.fieldPaths=lastPurchaseAt`;
 
   let updateData: any = {
     fields: {
-      coins: { integerValue: newCoins },
+      stats: {
+        mapValue: {
+          fields: {
+            coins: { integerValue: newCoins },
+          },
+        },
+      },
       lastPurchaseAt: { timestampValue: new Date().toISOString() },
     },
   };
 
   if (itemType === 'theme') {
     const updatedThemes = [...new Set([...currentUnlockedThemes, itemId])];
-    updateData.fields.unlockedThemes = {
+    updateData.fields.stats.mapValue.fields.unlockedThemes = {
       arrayValue: {
         values: updatedThemes.map((t) => ({ stringValue: t })),
       },
     };
   } else if (itemType === 'streakFreeze') {
-    updateData.fields.streakFreezes = { integerValue: currentStreakFreezes + 1 };
+    updateData.fields.stats.mapValue.fields.streakFreezes = { integerValue: currentStreakFreezes + 1 };
   }
 
   const response = await fetch(url, {
