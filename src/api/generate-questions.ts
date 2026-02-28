@@ -49,9 +49,9 @@ const MODEL_TIERS = {
     heavy: 'claude-sonnet-4-5-20250929',
   },
   gemini: {
-    light: 'gemini-3-flash-preview',
-    standard: 'gemini-3-flash-preview',
-    heavy: 'gemini-3-pro-preview',
+    light: 'gemini-1.5-flash-latest',
+    standard: 'gemini-1.5-flash-latest',
+    heavy: 'gemini-1.5-pro-latest',
   },
 } as const;
 
@@ -154,6 +154,8 @@ async function callAIProvider({
 
     case 'gemini': {
       const endpoint = `${AI_ENDPOINTS.gemini}/${model}:generateContent?key=${apiKey}`;
+      console.log(`[Gemini] Calling endpoint: ${endpoint.replace(apiKey, '***')}`);
+      
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -164,11 +166,25 @@ async function callAIProvider({
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(`Gemini API error: ${JSON.stringify(error)}`);
+        const errorText = await response.text();
+        console.error(`[Gemini] API error ${response.status}:`, errorText);
+        let errorMessage = `Gemini API error (${response.status})`;
+        try {
+          const errorJson = JSON.parse(errorText);
+          errorMessage = errorJson.error?.message || errorMessage;
+        } catch {
+          errorMessage = errorText || errorMessage;
+        }
+        throw new Error(errorMessage);
       }
 
       const data: any = await response.json();
+      
+      if (!data.candidates?.[0]?.content?.parts?.[0]?.text) {
+        console.error('[Gemini] Unexpected response format:', JSON.stringify(data));
+        throw new Error('Gemini API returned unexpected response format');
+      }
+      
       return data.candidates[0].content.parts[0].text;
     }
 
