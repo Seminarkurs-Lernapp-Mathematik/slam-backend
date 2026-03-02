@@ -1,12 +1,12 @@
 /**
- * Analyze Image Endpoint
- * Extracts mathematical topics from uploaded images (exam papers, notes, etc.)
+ * Collaborative Canvas Endpoint
+ * Allows users to draw/annotate on a canvas and ask AI questions about their drawing
  *
  * Features:
- * - Multipart form data handling for image uploads
+ * - Multipart form data handling for canvas image uploads
  * - Vision model integration (Claude/Gemini with vision)
- * - Topic extraction and curriculum mapping
- * - Support for German math terminology
+ * - Math problem solving from handwritten/drawn input
+ * - Step-by-step explanation generation
  */
 
 import type { Context } from 'hono';
@@ -17,27 +17,21 @@ import { APIError } from '../types';
 // TYPE DEFINITIONS
 // ============================================================================
 
-interface AnalyzeImageRequest {
+interface CollaborativeCanvasRequest {
   imageBase64: string;
+  question: string;
   apiKey: string;
   provider?: 'claude' | 'gemini';
   selectedModel?: string;
-  analysisType?: 'topic-extraction' | 'question-generation' | 'full-analysis';
   gradeLevel?: string;
+  courseType?: string;
 }
 
-interface ExtractedTopic {
-  leitidee: string;
-  thema: string;
-  unterthema: string;
-  confidence: number;
-}
-
-interface AnalysisResult {
-  topics: ExtractedTopic[];
-  summary: string;
-  suggestedQuestions?: string[];
-  difficulty?: number;
+interface CanvasResponse {
+  answer: string;
+  steps?: string[];
+  relatedConcepts?: string[];
+  suggestions?: string[];
 }
 
 // ============================================================================
@@ -45,39 +39,14 @@ interface AnalysisResult {
 // ============================================================================
 
 const VISION_MODELS = {
-  claude: 'claude-sonnet-4-5-20250929', // Claude has vision capabilities
-  gemini: 'gemini-3-pro-preview', // Gemini Pro has vision
+  claude: 'claude-sonnet-4-5-20250929',
+  gemini: 'gemini-2.0-flash',
 } as const;
 
 const AI_ENDPOINTS = {
   claude: 'https://api.anthropic.com/v1/messages',
   gemini: 'https://generativelanguage.googleapis.com/v1beta/models',
 } as const;
-
-// ============================================================================
-// CURRICULUM REFERENCE FOR VALIDATION
-// ============================================================================
-
-const VALID_LEITIDEEN = ['Algebra', 'Analysis', 'Geometrie', 'Stochastik'] as const;
-
-const THEMA_MAPPINGS: Record<string, string[]> = {
-  'Algebra': [
-    'Gleichungen', 'Ungleichungen', 'Funktionen', 'Terme', 'Potenzen', 'Wurzeln',
-    'Logarithmen', 'Polynome', 'Rationalg', 'Komplexe Zahlen', 'Matrizen'
-  ],
-  'Analysis': [
-    'Grenzwerte', 'Differentialrechnung', 'Integralrechnung', 'Kurvendiskussion',
-    'Funktionsscharen', 'e-Funktion', 'Trigonometrische Funktionen', 'Folgen', 'Reihen'
-  ],
-  'Geometrie': [
-    'Vektoren', 'Analytische Geometrie', 'Geraden', 'Ebenen', 'Kreise', 'Kugeln',
-    'Abbildungen', 'Trigonometrie', 'Sätze', 'Körper'
-  ],
-  'Stochastik': [
-    'Kombinatorik', 'Wahrscheinlichkeit', 'Zufallsvariablen', 'Verteilungen',
-    'Statistik', 'Hypothesentests', 'Regression', 'Binomialverteilung', 'Normalverteilung'
-  ],
-};
 
 // ============================================================================
 // HELPER FUNCTIONS
@@ -113,7 +82,7 @@ async function callVisionProvider({
         body: JSON.stringify({
           model,
           max_tokens: 4000,
-          temperature: 0.3,
+          temperature: 0.4,
           messages: [{
             role: 'user',
             content: [
@@ -121,7 +90,7 @@ async function callVisionProvider({
                 type: 'image',
                 source: {
                   type: 'base64',
-                  media_type: 'image/jpeg',
+                  media_type: 'image/png',
                   data: imageBase64,
                 },
               },
@@ -154,13 +123,13 @@ async function callVisionProvider({
               { text: prompt },
               {
                 inline_data: {
-                  mime_type: 'image/jpeg',
+                  mime_type: 'image/png',
                   data: imageBase64,
                 },
               },
             ],
           }],
-          generationConfig: { temperature: 0.3, maxOutputTokens: 4000 },
+          generationConfig: { temperature: 0.4, maxOutputTokens: 4000 },
         }),
       });
 
@@ -178,56 +147,55 @@ async function callVisionProvider({
   }
 }
 
-function buildPrompt(analysisType: string, gradeLevel?: string): string {
-  const basePrompt = `Analysiere dieses Bild und extrahiere mathematische Themen.
+function buildPrompt(question: string, gradeLevel?: string, courseType?: string): string {
+  return `Du bist ein Mathematik-Tutor. Ein Schüler hat ein mathematisches Problem auf einem digitalen Canvas gezeichnet/aufgeschrieben und hat eine Frage dazu.
 
 ${gradeLevel ? `KLASSENSTUFE: ${gradeLevel}` : ''}
+${courseType ? `KURSTYP: ${courseType}` : ''}
+
+FRAGE DES SCHÜLERS:
+"${question}"
 
 AUFGABE:
-1. Identifiziere ALLE mathematischen Themen im Bild
-2. Ordne sie dem deutschen Mathematik-Lehrplan zu:
-   - Leitidee (Algebra, Analysis, Geometrie, Stochastik)
-   - Thema (z.B. "Gleichungen", "Differentialrechnung")
-   - Unterthema (spezifischer Bereich)
-
-3. Bewerte deine Zuordnung mit Confidence-Score (0.0-1.0)
-
-4. Erstelle eine Zusammenfassung des Inhalts
-
-LEITIDEEN-REFERENZ:
-- Algebra: Gleichungen, Funktionen, Terme, Logarithmen, Matrizen
-- Analysis: Grenzwerte, Ableitungen, Integrale, Kurvendiskussion, e-Funktion
-- Geometrie: Vektoren, Analytische Geometrie, Trigonometrie, Körper
-- Stochastik: Wahrscheinlichkeit, Statistik, Verteilungen, Kombinatorik
+1. Analysiere das gezeichnete/geschriebene mathematische Problem im Bild
+2. Beantworte die Frage des Schülers ausführlich und verständlich
+3. Erkläre die Lösung Schritt für Schritt
+4. Nenne verwandte mathematische Konzepte
+5. Gib Vorschläge für ähnliche Übungsaufgaben
 
 ANTWORTFORMAT - JSON:
 {
-  "topics": [
-    {
-      "leitidee": "Algebra|Analysis|Geometrie|Stochastik",
-      "thema": "Name des Themas",
-      "unterthema": "Spezifisches Unterthema",
-      "confidence": 0.95
-    }
+  "answer": "Ausführliche Antwort auf die Frage mit Erklärung",
+  "steps": [
+    "Schritt 1: ...",
+    "Schritt 2: ...",
+    "Schritt 3: ..."
   ],
-  "summary": "Beschreibung des Bildinhalts in 2-3 Sätzen"
-}`;
-
-  if (analysisType === 'question-generation') {
-    return basePrompt + `,
-  "suggestedQuestions": [
-    "Beispiel-Frage 1 zum Thema",
-    "Beispiel-Frage 2 zum Thema"
+  "relatedConcepts": [
+    "Konzept 1",
+    "Konzept 2"
   ],
-  "difficulty": 5
-}`;
-  }
+  "suggestions": [
+    "Vorschlag für nächste Übung 1",
+    "Vorschlag für nächste Übung 2"
+  ]
+}
 
-  return basePrompt;
+Wichtig: Die Antwort muss gültiges JSON sein. Keine Markdown-Formatierung, kein Code-Block, nur reines JSON.`;
 }
 
 function extractJSONFromResponse(text: string): any {
-  // Try to find JSON in the response
+  // Try to find JSON in code blocks
+  const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (codeBlockMatch) {
+    try {
+      return JSON.parse(codeBlockMatch[1].trim());
+    } catch (e) {
+      // Continue to other methods
+    }
+  }
+
+  // Try to find JSON object directly
   const jsonMatch = text.match(/\{[\s\S]*\}/);
   if (jsonMatch) {
     try {
@@ -236,7 +204,7 @@ function extractJSONFromResponse(text: string): any {
       // Continue to other methods
     }
   }
-  
+
   // Try parsing the whole text
   try {
     return JSON.parse(text);
@@ -245,30 +213,16 @@ function extractJSONFromResponse(text: string): any {
   }
 }
 
-function validateAndNormalizeTopics(data: any): AnalysisResult {
-  if (!data.topics || !Array.isArray(data.topics)) {
-    throw new APIError('Invalid response: topics must be an array', 500);
-  }
-
-  // Validate and normalize each topic
-  const validatedTopics: ExtractedTopic[] = data.topics
-    .map((t: any) => ({
-      leitidee: VALID_LEITIDEEN.includes(t.leitidee) ? t.leitidee : 'Algebra',
-      thema: t.thema || 'Allgemein',
-      unterthema: t.unterthema || t.thema || 'Allgemein',
-      confidence: Math.max(0, Math.min(1, parseFloat(t.confidence) || 0.5)),
-    }))
-    .filter((t: ExtractedTopic) => t.leitidee && t.thema);
-
-  if (validatedTopics.length === 0) {
-    throw new APIError('No valid topics extracted from image', 422);
+function validateResponse(data: any): CanvasResponse {
+  if (!data.answer || typeof data.answer !== 'string') {
+    throw new APIError('Invalid response: answer must be a string', 500);
   }
 
   return {
-    topics: validatedTopics,
-    summary: data.summary || 'Mathematische Themen extrahiert',
-    suggestedQuestions: data.suggestedQuestions,
-    difficulty: data.difficulty,
+    answer: data.answer,
+    steps: Array.isArray(data.steps) ? data.steps : undefined,
+    relatedConcepts: Array.isArray(data.relatedConcepts) ? data.relatedConcepts : undefined,
+    suggestions: Array.isArray(data.suggestions) ? data.suggestions : undefined,
   };
 }
 
@@ -276,14 +230,17 @@ function validateAndNormalizeTopics(data: any): AnalysisResult {
 // MAIN HANDLER
 // ============================================================================
 
-export async function handleAnalyzeImage(c: Context<{ Bindings: Env }>) {
+export async function handleCollaborativeCanvas(c: Context<{ Bindings: Env }>) {
   try {
-    const body = await c.req.json<Partial<AnalyzeImageRequest>>();
+    const body = await c.req.json<Partial<CollaborativeCanvasRequest>>();
 
     // Validate required fields
-    const { imageBase64, apiKey } = body;
+    const { imageBase64, question, apiKey } = body;
     if (!imageBase64) {
       throw new APIError('Missing required field: imageBase64', 400);
+    }
+    if (!question || question.trim().length === 0) {
+      throw new APIError('Missing required field: question', 400);
     }
     if (!apiKey) {
       throw new APIError('Missing required field: apiKey', 400);
@@ -303,12 +260,12 @@ export async function handleAnalyzeImage(c: Context<{ Bindings: Env }>) {
 
     const provider = body.provider || 'claude';
     const selectedModel = body.selectedModel;
-    const analysisType = body.analysisType || 'topic-extraction';
     const gradeLevel = body.gradeLevel;
+    const courseType = body.courseType;
 
-    console.log('[analyze-image] Request:', {
+    console.log('[collaborative-canvas] Request:', {
       provider,
-      analysisType,
+      questionLength: question.length,
       imageSize: estimatedSize,
     });
 
@@ -323,7 +280,7 @@ export async function handleAnalyzeImage(c: Context<{ Bindings: Env }>) {
     // PHASE 2: Build prompt and call AI
     // =======================================================================
 
-    const prompt = buildPrompt(analysisType, gradeLevel);
+    const prompt = buildPrompt(question, gradeLevel, courseType);
 
     const responseText = await callVisionProvider({
       provider,
@@ -337,20 +294,27 @@ export async function handleAnalyzeImage(c: Context<{ Bindings: Env }>) {
     // PHASE 3: Parse and validate response
     // =======================================================================
 
-    let analysisData: any;
+    let responseData: any;
     try {
-      analysisData = extractJSONFromResponse(responseText);
+      responseData = extractJSONFromResponse(responseText);
     } catch (parseError) {
-      console.error('[analyze-image] Parse error:', parseError);
-      console.error('[analyze-image] Raw response:', responseText.substring(0, 500));
-      throw new APIError('Failed to parse AI response as JSON', 500);
+      console.error('[collaborative-canvas] Parse error:', parseError);
+      console.error('[collaborative-canvas] Raw response:', responseText.substring(0, 500));
+      
+      // Fallback: return the raw text as answer
+      return c.json({
+        success: true,
+        answer: responseText,
+        modelUsed: model,
+        providerUsed: provider,
+      });
     }
 
-    const result = validateAndNormalizeTopics(analysisData);
+    const result = validateResponse(responseData);
 
-    console.log('[analyze-image] Success:', {
-      topicCount: result.topics.length,
-      topConfidence: result.topics[0]?.confidence,
+    console.log('[collaborative-canvas] Success:', {
+      answerLength: result.answer.length,
+      hasSteps: !!result.steps?.length,
     });
 
     // =======================================================================
@@ -365,7 +329,7 @@ export async function handleAnalyzeImage(c: Context<{ Bindings: Env }>) {
     });
 
   } catch (error) {
-    console.error('[analyze-image] Error:', error);
+    console.error('[collaborative-canvas] Error:', error);
 
     if (error instanceof APIError) {
       return c.json({ success: false, error: error.message }, error.statusCode as any);

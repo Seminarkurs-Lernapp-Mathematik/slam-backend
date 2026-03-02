@@ -12,8 +12,8 @@ export function getCorsHeaders(origin?: string): HeadersInit {
   const isLocalhost =
     origin?.startsWith('http://localhost') || origin?.startsWith('http://127.0.0.1');
 
-  const allowOrigin =
-    isLocalhost || (origin && allowedOrigins.includes(origin)) ? origin : '*';
+  const allowOrigin: string =
+    isLocalhost || (origin && allowedOrigins.includes(origin)) ? (origin ?? '*') : '*';
 
   return {
     'Access-Control-Allow-Origin': allowOrigin,

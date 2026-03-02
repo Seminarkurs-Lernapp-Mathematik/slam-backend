@@ -153,7 +153,7 @@ export async function handlePurchase(c: Context<{ Bindings: Env }>) {
 
     // Validate request
     validatePurchaseRequest(body);
-    const { userId, itemType, itemId, cost, firebaseConfig } = body;
+    const { userId, itemType, itemId, cost, firebaseConfig } = body as PurchaseRequest;
 
     console.log('[purchase] Request:', { userId, itemType, itemId, cost });
 
@@ -253,7 +253,7 @@ export async function handlePurchase(c: Context<{ Bindings: Env }>) {
     console.error('[purchase] Error:', error);
 
     if (error instanceof APIError) {
-      return c.json({ success: false, error: error.message }, error.statusCode);
+      return c.json({ success: false, error: error.message }, error.statusCode as any);
     }
 
     return c.json(

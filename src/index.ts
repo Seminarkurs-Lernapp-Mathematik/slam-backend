@@ -16,6 +16,7 @@ import { handleAnalyzeImage } from './api/analyze-image';
 import { handleManageMemories } from './api/manage-memories';
 import { handleUpdateAutoMode } from './api/update-auto-mode';
 import { handleManageLearningPlan } from './api/manage-learning-plan';
+import { handleCollaborativeCanvas } from './api/collaborative-canvas';
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -82,6 +83,7 @@ app.get('/', (c) => {
       'POST /api/manage-learning-plan',
       'POST /api/manage-memories',
       'POST /api/analyze-image',
+      'POST /api/collaborative-canvas',
       'POST /api/purchase',
     ],
   });
@@ -103,8 +105,11 @@ app.post('/api/update-auto-mode', handleUpdateAutoMode);
 app.post('/api/manage-learning-plan', handleManageLearningPlan);
 app.post('/api/manage-memories', handleManageMemories);
 
-// Image & Purchase
+// Image & Canvas
 app.post('/api/analyze-image', handleAnalyzeImage);
+app.post('/api/collaborative-canvas', handleCollaborativeCanvas);
+
+// Purchase
 app.post('/api/purchase', handlePurchase);
 
 // 404 Handler

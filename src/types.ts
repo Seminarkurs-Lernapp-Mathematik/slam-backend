@@ -93,7 +93,7 @@ export interface QuestionSession {
 // AI CONFIGURATION
 // ============================================================================
 
-export type AIProvider = 'claude' | 'gemini';
+export type AIProvider = 'claude' | 'gemini' | 'openrouter';
 export type ModelTier = 'light' | 'standard' | 'heavy';
 
 // ============================================================================

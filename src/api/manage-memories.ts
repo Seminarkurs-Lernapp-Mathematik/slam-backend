@@ -504,7 +504,7 @@ export async function handleManageMemories(c: Context<{ Bindings: Env }>) {
     console.error('[manage-memories] Error:', error);
 
     if (error instanceof APIError) {
-      return c.json({ success: false, error: error.message }, error.statusCode);
+      return c.json({ success: false, error: error.message }, error.statusCode as any);
     }
 
     return c.json(

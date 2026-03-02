@@ -26,7 +26,7 @@ interface GenerateQuestionsRequest {
   topics: Topic[];
   userContext: UserContext;
   selectedModel?: string;
-  provider?: 'claude' | 'gemini';
+  provider?: 'claude' | 'gemini' | 'openrouter';
   complexity?: 'light' | 'standard' | 'heavy' | null;
   afbLevel?: 'I' | 'II' | 'III';
   questionCount?: number;
@@ -53,11 +53,17 @@ const MODEL_TIERS = {
     standard: 'gemini-1.5-flash-latest',
     heavy: 'gemini-1.5-pro-latest',
   },
+  openrouter: {
+    light: 'google/gemini-2.0-flash-exp:free',
+    standard: 'google/gemini-2.0-flash-thinking-exp:free',
+    heavy: 'deepseek/deepseek-r1:free',
+  },
 } as const;
 
 const AI_ENDPOINTS = {
   claude: 'https://api.anthropic.com/v1/messages',
   gemini: 'https://generativelanguage.googleapis.com/v1beta/models',
+  openrouter: 'https://openrouter.ai/api/v1/chat/completions',
 } as const;
 
 // ============================================================================
@@ -91,14 +97,14 @@ function determineModelTier({
 }
 
 function selectModel(
-  provider: 'claude' | 'gemini',
+  provider: 'claude' | 'gemini' | 'openrouter',
   complexityOptions: Parameters<typeof determineModelTier>[0],
   preferredModel?: string | null
 ): string {
   if (preferredModel) return preferredModel;
 
   const tier = determineModelTier(complexityOptions);
-  return MODEL_TIERS[provider]?.[tier] || MODEL_TIERS.claude.standard;
+  return MODEL_TIERS[provider as keyof typeof MODEL_TIERS]?.[tier] || MODEL_TIERS.claude.standard;
 }
 
 function generateCacheKey(topics: Topic[], afbLevel: string, difficulty: number): string {
@@ -119,7 +125,7 @@ async function callAIProvider({
   temperature,
   maxTokens,
 }: {
-  provider: 'claude' | 'gemini';
+  provider: 'claude' | 'gemini' | 'openrouter';
   apiKey: string;
   model: string;
   prompt: string;
@@ -155,7 +161,7 @@ async function callAIProvider({
     case 'gemini': {
       const endpoint = `${AI_ENDPOINTS.gemini}/${model}:generateContent?key=${apiKey}`;
       console.log(`[Gemini] Calling endpoint: ${endpoint.replace(apiKey, '***')}`);
-      
+
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -179,13 +185,42 @@ async function callAIProvider({
       }
 
       const data: any = await response.json();
-      
+
       if (!data.candidates?.[0]?.content?.parts?.[0]?.text) {
         console.error('[Gemini] Unexpected response format:', JSON.stringify(data));
         throw new Error('Gemini API returned unexpected response format');
       }
-      
+
       return data.candidates[0].content.parts[0].text;
+    }
+
+    case 'openrouter': {
+      const response = await fetch(AI_ENDPOINTS.openrouter, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+          'HTTP-Referer': 'https://learn-smart.app',
+          'X-Title': 'SLAM Learning App',
+        },
+        body: JSON.stringify({
+          model,
+          messages: [{ role: 'user', content: prompt }],
+          temperature,
+          max_tokens: maxTokens,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: response.statusText }));
+        throw new Error(`OpenRouter API error (${response.status}): ${JSON.stringify(error)}`);
+      }
+
+      const data: any = await response.json();
+      if (!data.choices?.[0]?.message?.content) {
+        throw new Error(`OpenRouter returned no content`);
+      }
+      return data.choices[0].message.content;
     }
 
     default:
@@ -202,8 +237,8 @@ function buildPrompt(
   const topicsList = topics.map((t) => `- ${t.leitidee} > ${t.thema} > ${t.unterthema}`).join('\n');
 
   const strugglingTopicsText =
-    userContext.recentPerformance?.strugglingTopics?.length > 0
-      ? `Der Schüler hat Schwierigkeiten mit: ${userContext.recentPerformance.strugglingTopics.join(', ')}`
+    (userContext.recentPerformance?.strugglingTopics?.length ?? 0) > 0
+      ? `Der Schüler hat Schwierigkeiten mit: ${userContext.recentPerformance!.strugglingTopics!.join(', ')}`
       : 'Keine bekannten Schwierigkeiten';
 
   const autoModeText = userContext.autoModeAssessment
@@ -758,7 +793,7 @@ export async function handleGenerateQuestions(c: Context<{ Bindings: Env }>) {
     console.error('[generate-questions] Error:', error);
 
     if (error instanceof APIError) {
-      return c.json({ success: false, error: error.message }, error.statusCode);
+      return c.json({ success: false, error: error.message }, error.statusCode as any);
     }
 
     return c.json(

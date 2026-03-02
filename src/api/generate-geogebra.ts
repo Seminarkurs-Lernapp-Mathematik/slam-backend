@@ -22,7 +22,7 @@ interface GenerateGeogebraRequest {
   topic?: string;
   userPrompt?: string;
   apiKey: string;
-  provider?: 'claude' | 'gemini';
+  provider?: 'claude' | 'gemini' | 'openrouter';
   selectedModel?: string;
   gradeLevel?: string;
 }
@@ -47,11 +47,16 @@ const MODEL_TIERS = {
     light: 'gemini-3-flash-preview',
     standard: 'gemini-3-pro-preview',
   },
+  openrouter: {
+    light: 'google/gemini-2.0-flash-exp:free',
+    standard: 'google/gemini-2.0-flash-thinking-exp:free',
+  },
 } as const;
 
 const AI_ENDPOINTS = {
   claude: 'https://api.anthropic.com/v1/messages',
   gemini: 'https://generativelanguage.googleapis.com/v1beta/models',
+  openrouter: 'https://openrouter.ai/api/v1/chat/completions',
 } as const;
 
 // ============================================================================
@@ -59,11 +64,11 @@ const AI_ENDPOINTS = {
 // ============================================================================
 
 function selectModel(
-  provider: 'claude' | 'gemini',
+  provider: 'claude' | 'gemini' | 'openrouter',
   preferredModel?: string
 ): string {
   if (preferredModel) return preferredModel;
-  return MODEL_TIERS[provider].standard;
+  return MODEL_TIERS[provider as keyof typeof MODEL_TIERS].standard;
 }
 
 async function callAIProvider({
@@ -74,7 +79,7 @@ async function callAIProvider({
   temperature,
   maxTokens,
 }: {
-  provider: 'claude' | 'gemini';
+  provider: 'claude' | 'gemini' | 'openrouter';
   apiKey: string;
   model: string;
   prompt: string;
@@ -125,6 +130,35 @@ async function callAIProvider({
 
       const data: any = await response.json();
       return data.candidates[0].content.parts[0].text;
+    }
+
+    case 'openrouter': {
+      const response = await fetch(AI_ENDPOINTS.openrouter, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+          'HTTP-Referer': 'https://learn-smart.app',
+          'X-Title': 'SLAM Learning App',
+        },
+        body: JSON.stringify({
+          model,
+          messages: [{ role: 'user', content: prompt }],
+          temperature,
+          max_tokens: maxTokens,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: response.statusText }));
+        throw new Error(`OpenRouter API error (${response.status}): ${JSON.stringify(error)}`);
+      }
+
+      const data: any = await response.json();
+      if (!data.choices?.[0]?.message?.content) {
+        throw new Error(`OpenRouter returned no content`);
+      }
+      return data.choices[0].message.content;
     }
 
     default:
@@ -343,7 +377,7 @@ export async function handleGenerateGeogebra(c: Context<{ Bindings: Env }>) {
     console.error('[generate-geogebra] Error:', error);
 
     if (error instanceof APIError) {
-      return c.json({ success: false, error: error.message }, error.statusCode);
+      return c.json({ success: false, error: error.message }, error.statusCode as any);
     }
 
     return c.json(

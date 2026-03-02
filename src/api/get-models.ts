@@ -1,7 +1,7 @@
 import { Context } from 'hono';
 
 interface GetModelsRequest {
-  provider: 'claude' | 'gemini';
+  provider: 'claude' | 'gemini' | 'openrouter';
 }
 
 interface ModelInfo {
@@ -13,7 +13,7 @@ interface ModelInfo {
 }
 
 interface GetModelsResponse {
-  provider: 'claude' | 'gemini';
+  provider: 'claude' | 'gemini' | 'openrouter';
   models: ModelInfo[];
 }
 
@@ -73,20 +73,71 @@ const GEMINI_MODELS: ModelInfo[] = [
   },
 ];
 
+// OpenRouter free models
+const OPENROUTER_MODELS: ModelInfo[] = [
+  {
+    id: 'google/gemini-2.0-flash-exp:free',
+    name: 'Gemini 2.0 Flash (Free)',
+    description: 'Free tier - Fast responses via OpenRouter',
+    tier: 'fast',
+    contextWindow: 100000,
+  },
+  {
+    id: 'google/gemini-2.0-flash-thinking-exp:free',
+    name: 'Gemini 2.0 Flash Thinking (Free)',
+    description: 'Free tier - Enhanced reasoning via OpenRouter',
+    tier: 'standard',
+    contextWindow: 100000,
+  },
+  {
+    id: 'deepseek/deepseek-r1:free',
+    name: 'DeepSeek R1 (Free)',
+    description: 'Free tier - Advanced reasoning model',
+    tier: 'smart',
+    contextWindow: 128000,
+  },
+  {
+    id: 'meta-llama/llama-3.3-70b-instruct:free',
+    name: 'Llama 3.3 70B (Free)',
+    description: 'Free tier - Meta LLM via OpenRouter',
+    tier: 'standard',
+    contextWindow: 128000,
+  },
+  {
+    id: 'nvidia/llama-3.1-nemotron-70b-instruct:free',
+    name: 'Nemotron 70B (Free)',
+    description: 'Free tier - NVIDIA optimized via OpenRouter',
+    tier: 'smart',
+    contextWindow: 128000,
+  },
+];
+
 export async function handleGetModels(c: Context): Promise<Response> {
   try {
     const { provider } = await c.req.query() as unknown as GetModelsRequest;
 
-    if (!provider || !['claude', 'gemini'].includes(provider)) {
+    if (!provider || !['claude', 'gemini', 'openrouter'].includes(provider)) {
       return c.json(
         {
-          error: 'Invalid provider. Must be "claude" or "gemini"',
+          error: 'Invalid provider. Must be "claude", "gemini", or "openrouter"',
         },
         400
       );
     }
 
-    const models = provider === 'claude' ? CLAUDE_MODELS : GEMINI_MODELS;
+    let models: ModelInfo[];
+    switch (provider) {
+      case 'claude':
+        models = CLAUDE_MODELS;
+        break;
+      case 'openrouter':
+        models = OPENROUTER_MODELS;
+        break;
+      case 'gemini':
+      default:
+        models = GEMINI_MODELS;
+        break;
+    }
 
     const response: GetModelsResponse = {
       provider,
