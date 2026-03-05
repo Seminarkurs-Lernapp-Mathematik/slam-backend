@@ -1,22 +1,30 @@
 /**
  * repairJson.ts
  *
- * Fixes JSON strings that contain invalid or misused escape sequences.
- * This is a common problem when AI models (especially Gemini) include LaTeX
- * in JSON responses without properly escaping backslashes.
+ * Fixes common problems in AI-generated JSON before passing to JSON.parse:
  *
- * Two classes of problems:
+ * 1. TRAILING COMMAS – Gemini often writes trailing commas in arrays/objects:
+ *    ["a", "b",] → ["a", "b"]  (standard JSON forbids trailing commas)
  *
- * 1. INVALID escapes – JSON only allows: \" \\ \/ \b \f \n \r \t \uXXXX
- *    Gemini writes: \sqrt, \int, \sum, \alpha, etc. → "Bad escaped character"
- *    Fix: double the backslash so \s → \\s (which JSON.parse gives back as \s)
+ * 2. INVALID BACKSLASH ESCAPES – JSON only allows: \" \\ \/ \b \f \n \r \t \uXXXX
+ *    Gemini writes LaTeX like \sqrt, \int, \alpha → "Bad escaped character"
+ *    Fix: double the backslash so \s → \\s (JSON.parse gives back \s for LaTeX)
  *
- * 2. VALID-BUT-MISUSED escapes – \f \b \t \n \r are valid JSON escapes, but
- *    Gemini uses them as the start of LaTeX commands: \frac, \begin, \text...
- *    After JSON.parse, \f becomes a form feed character (U+000C), not \frac.
- *    Fix: when \f \b \t \n \r are followed by alphabetic chars (→ LaTeX cmd),
- *    double the backslash before JSON.parse.
+ * 3. VALID-BUT-MISUSED ESCAPES – \f \b \n \r \t are valid JSON escapes but
+ *    Gemini uses them as LaTeX: \frac, \begin, \nabla…  After JSON.parse,
+ *    \f becomes a form-feed character (U+000C) instead of the LaTeX command.
+ *    Fix: when these appear before an alphabetic char, double the backslash.
  */
+
+/**
+ * Remove trailing commas inside JSON arrays and objects.
+ * Handles nested structures correctly by only removing commas
+ * immediately before ] or }.
+ */
+function removeTrailingCommas(text: string): string {
+  // Remove comma(s) followed only by whitespace before ] or }
+  return text.replace(/,(\s*[}\]])/g, '$1');
+}
 
 /**
  * Repairs raw AI response text so it can be parsed with JSON.parse.
@@ -26,37 +34,24 @@ export function repairJsonEscapes(text: string): string {
   let result = text;
 
   // ─── Pass 1: Fix unambiguously invalid JSON escape sequences ──────────────
-  // Valid single-char JSON escapes: " \ / b f n r t
-  // Valid multi-char: \uXXXX
-  // Everything else (e.g. \s, \a, \c, \{, \(, uppercase letters, …) is invalid.
   result = result.replace(
     /\\(u[0-9a-fA-F]{4}|["\\/bfnrt]|u(?![0-9a-fA-F]{4})|[\s\S])/g,
     (match, captured) => {
-      // Keep valid \uXXXX
-      if (/^u[0-9a-fA-F]{4}$/.test(captured)) return match;
-      // Keep valid single-char escapes
-      if (captured.length === 1 && '"\\\/bfnrt'.includes(captured)) return match;
-      // Fix everything else
-      return '\\\\' + captured;
+      if (/^u[0-9a-fA-F]{4}$/.test(captured)) return match; // valid \uXXXX
+      if (captured.length === 1 && '"\\\/bfnrt'.includes(captured)) return match; // valid single-char
+      return '\\\\' + captured; // fix invalid escape
     }
   );
 
-  // ─── Pass 2: Fix valid-but-misused escapes that are actually LaTeX ─────────
-  // \f \b \t \n \r followed by an alphabetic character almost certainly means
-  // a LaTeX command (\frac, \begin, \text, \nabla, \rho, …) was written with a
-  // single backslash in the JSON. We double the backslash so JSON.parse gives
-  // back the single backslash that LaTeX needs.
-  //
-  // Guard: don't touch an already-doubled backslash sequence (\\f…).
-  // The lookbehind alternative via negative group: (^|[^\\]) before the match.
-  // Replacement keeps group-1 (the char before the backslash) and doubles \.
+  // ─── Pass 2: Fix valid-but-misused escapes used as LaTeX commands ──────────
+  // Only applies when the escape is followed directly by an alphabetic char
+  // (indicating a LaTeX command like \frac, \begin, \text, \nabla, \rho…).
+  // Guard prevents double-fixing already-escaped sequences (\\f etc.).
   const latexLeaders = ['f', 'b', 't', 'n', 'r'] as const;
   for (const ch of latexLeaders) {
-    // Match: (start-of-string OR non-backslash char) + \ch + alphabetic char (lookahead)
-    // The first group preserves the character before the backslash.
     result = result.replace(
       new RegExp(`(^|[^\\\\])(\\\\${ch})(?=[a-zA-Z])`, 'g'),
-      (_, pre, esc) => pre + '\\' + esc  // double the backslash: \ch → \\ch
+      (_, pre, esc) => pre + '\\' + esc
     );
   }
 
@@ -64,17 +59,19 @@ export function repairJsonEscapes(text: string): string {
 }
 
 /**
- * Parses a JSON string with LaTeX escape repair applied unconditionally.
+ * Parses a JSON string with full repair pipeline applied unconditionally:
+ *   1. Remove trailing commas
+ *   2. Fix invalid/misused backslash escapes
+ *   3. JSON.parse
  *
  * IMPORTANT: repair must run BEFORE JSON.parse, not as a fallback.
- * Sequences like \frac are parsed "successfully" by JSON.parse as a form-feed
- * character followed by "rac" — no error is thrown, but the data is silently
- * corrupted. Repairing first converts \frac → \\frac so JSON.parse produces
- * the correct string value "\frac".
+ * Sequences like \frac are "successfully" parsed by JSON.parse as a form-feed
+ * character + "rac" — no error thrown, but the data is silently corrupted.
  */
 export function parseJsonWithRepair(text: string): any {
   try {
-    return JSON.parse(repairJsonEscapes(text));
+    const repaired = repairJsonEscapes(removeTrailingCommas(text));
+    return JSON.parse(repaired);
   } catch (err) {
     throw new Error(
       `Failed to parse JSON: ${err instanceof Error ? err.message : String(err)}`
@@ -84,7 +81,7 @@ export function parseJsonWithRepair(text: string): any {
 
 /**
  * Extracts the first JSON object from a string (strips surrounding prose /
- * markdown fences) and parses it with repair fallback.
+ * markdown fences) and parses it with the full repair pipeline.
  */
 export function extractAndParseJson(text: string): any {
   const objectMatch = text.match(/\{[\s\S]*\}/);
