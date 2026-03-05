@@ -12,6 +12,7 @@
 import type { Context } from 'hono';
 import type { Env } from '../index';
 import { APIError } from '../types';
+import { parseJsonWithRepair } from '../utils/repairJson';
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -237,22 +238,9 @@ WICHTIG:
 }
 
 function extractJSONFromResponse(text: string): any {
-  // Try to find JSON in the response
   const jsonMatch = text.match(/\{[\s\S]*\}/);
-  if (jsonMatch) {
-    try {
-      return JSON.parse(jsonMatch[0]);
-    } catch (e) {
-      // Continue to other methods
-    }
-  }
-  
-  // Try parsing the whole text
-  try {
-    return JSON.parse(text);
-  } catch (e) {
-    throw new Error('Could not parse JSON from AI response');
-  }
+  const candidate = jsonMatch ? jsonMatch[0] : text;
+  return parseJsonWithRepair(candidate);
 }
 
 function validateAndSanitizeApp(appData: any): GeneratedApp {

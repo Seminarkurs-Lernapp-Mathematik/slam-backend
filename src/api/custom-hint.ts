@@ -13,6 +13,7 @@
 import type { Context } from 'hono';
 import type { Env } from '../index';
 import { APIError } from '../types';
+import { parseJsonWithRepair } from '../utils/repairJson';
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -256,7 +257,7 @@ export async function handleCustomHint(c: Context<{ Bindings: Env }>) {
     try {
       const jsonMatch = responseText.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
+        const parsed = parseJsonWithRepair(jsonMatch[0]);
         hint = parsed.hint || '';
       } else {
         throw new Error('No JSON object found in response');

@@ -14,6 +14,7 @@ import type { Context } from 'hono';
 import type { Env } from '../index';
 import type { Topic, UserContext, QuestionSession, Question, QuestionOption, QuestionHint, StepByStepData } from '../types';
 import { APIError } from '../types';
+import { extractAndParseJson } from '../utils/repairJson';
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -290,6 +291,8 @@ PFLICHTFELDER FÜR JEDE FRAGE:
   - Hinweis 3 (id: "h3"): Fast vollständiger Lösungsweg
 
 Nutze LaTeX für mathematische Formeln: $...$
+WICHTIG FÜR LATEX IN JSON: Verwende IMMER doppelte Backslashes für LaTeX-Befehle in JSON-Strings!
+Beispiele: $\\frac{1}{2}$ statt $\frac{1}{2}$, $\\sqrt{x}$ statt $\sqrt{x}$, $\\int_0^1$ statt $\int_0^1$.
 
 WICHTIG: Antworte NUR mit einem JSON-Objekt (kein zusätzlicher Text, kein Markdown-Code-Block).
 
@@ -701,16 +704,12 @@ export async function handleGenerateQuestions(c: Context<{ Bindings: Env }>) {
       maxTokens: 16000,
     });
 
-    // Parse JSON response
+    // Parse JSON response (with repair for invalid LaTeX escape sequences from Gemini)
     let questionsData: any;
     try {
-      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        questionsData = JSON.parse(jsonMatch[0]);
-      } else {
-        questionsData = JSON.parse(responseText);
-      }
+      questionsData = extractAndParseJson(responseText);
     } catch (parseError) {
+      console.error('[generate-questions] Raw response (first 500 chars):', responseText.substring(0, 500));
       throw new APIError(
         `Failed to parse AI response: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`,
         500
