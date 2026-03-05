@@ -361,13 +361,8 @@ export async function handleGenerateMiniApp(c: Context<{ Bindings: Env }>) {
       return c.json({ success: false, error: error.message }, error.statusCode as any);
     }
 
-    return c.json(
-      {
-        success: false,
-        error: 'Internal server error',
-        message: error instanceof Error ? error.message : 'Unknown error',
-      },
-      500
-    );
+    const errMsg = error instanceof Error ? error.message : 'Unknown error';
+    const status = errMsg.includes('429') || errMsg.toLowerCase().includes('quota') || errMsg.toLowerCase().includes('rate') ? 429 : 500;
+    return c.json({ success: false, error: errMsg }, status as any);
   }
 }
