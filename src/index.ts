@@ -6,7 +6,6 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { handleGenerateQuestions } from './api/generate-questions';
-import { handleEvaluateAnswer } from './api/evaluate-answer';
 import { handleGetModels } from './api/get-models';
 import { handleCustomHint } from './api/custom-hint';
 import { handleGenerateMiniApp } from './api/generate-mini-app';
@@ -75,7 +74,7 @@ app.get('/', (c) => {
     endpoints: [
       'GET /api/get-models',
       'POST /api/generate-questions',
-      'POST /api/evaluate-answer',
+
       'POST /api/update-auto-mode',
       'POST /api/custom-hint',
       'POST /api/generate-geogebra',
@@ -92,7 +91,6 @@ app.get('/', (c) => {
 // API Endpoints
 // Core
 app.post('/api/generate-questions', handleGenerateQuestions);
-app.post('/api/evaluate-answer', handleEvaluateAnswer);
 app.get('/api/get-models', handleGetModels);
 app.post('/api/custom-hint', handleCustomHint);
 
