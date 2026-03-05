@@ -64,22 +64,21 @@ export function repairJsonEscapes(text: string): string {
 }
 
 /**
- * Attempts to parse a JSON string, with automatic repair of LaTeX escape
- * issues as a fallback. Throws if both attempts fail.
+ * Parses a JSON string with LaTeX escape repair applied unconditionally.
+ *
+ * IMPORTANT: repair must run BEFORE JSON.parse, not as a fallback.
+ * Sequences like \frac are parsed "successfully" by JSON.parse as a form-feed
+ * character followed by "rac" — no error is thrown, but the data is silently
+ * corrupted. Repairing first converts \frac → \\frac so JSON.parse produces
+ * the correct string value "\frac".
  */
 export function parseJsonWithRepair(text: string): any {
-  // Fast path: direct parse (always works for Claude)
   try {
-    return JSON.parse(text);
-  } catch (_) {
-    // Slow path: repair then retry
-    try {
-      return JSON.parse(repairJsonEscapes(text));
-    } catch (err) {
-      throw new Error(
-        `Failed to parse JSON even after repair: ${err instanceof Error ? err.message : String(err)}`
-      );
-    }
+    return JSON.parse(repairJsonEscapes(text));
+  } catch (err) {
+    throw new Error(
+      `Failed to parse JSON: ${err instanceof Error ? err.message : String(err)}`
+    );
   }
 }
 
