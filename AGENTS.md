@@ -98,10 +98,37 @@ npm run deploy:production   # https://api.learn-smart.app
 
 ### Secrets (set via Wrangler)
 ```bash
-npx wrangler secret put CLAUDE_API_KEY
-npx wrangler secret put GEMINI_API_KEY
-npx wrangler secret put FIREBASE_SERVICE_ACCOUNT
+# AI Provider API Keys (backend-managed, users don't need their own keys)
+npx wrangler secret put GEMINI_API_KEY       # Google Gemini API key
+npx wrangler secret put ANTHROPIC_API_KEY    # Anthropic Claude API key
+npx wrangler secret put FIREBASE_SERVICE_ACCOUNT  # Firebase service account JSON
 ```
+
+### Model Configuration
+Edit `config/models.json` to change AI configuration:
+
+**Per-task settings:**
+- `provider`: "gemini" or "claude"
+- `model`: Model ID (e.g., "gemini-2.0-flash", "claude-sonnet-4-6")
+- `temperature`: 0.0-1.0 (creativity vs consistency)
+- `systemPrompt`: The system prompt that defines the AI's role
+- `timeout`/`maxTokens`: Request limits
+
+**Example:**
+```json
+{
+  "tasks": {
+    "generateQuestions": {
+      "provider": "claude",
+      "model": "claude-sonnet-4-6",
+      "systemPrompt": "Du bist ein erfahrener Mathematiklehrer...",
+      "temperature": 0.7
+    }
+  }
+}
+```
+
+The backend automatically uses these settings - no user configuration needed.
 
 ---
 

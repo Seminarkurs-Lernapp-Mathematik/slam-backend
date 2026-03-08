@@ -15,13 +15,14 @@ import type { Env } from '../index';
 import type { Topic, UserContext, QuestionSession, Question, QuestionOption, QuestionHint, StepByStepData } from '../types';
 import { APIError } from '../types';
 import { extractAndParseJson } from '../utils/repairJson';
+import { callAI, getTaskModelConfig, type AIProviderType } from '../utils/callAI';
 
 // ============================================================================
 // TYPE DEFINITIONS
 // ============================================================================
 
 interface GenerateQuestionsRequest {
-  apiKey: string;
+  apiKey?: string;  // Optional: falls back to env vars
   userId: string;
   learningPlanItemId: number;
   topics: Topic[];
@@ -118,116 +119,7 @@ function generateCacheKey(topics: Topic[], afbLevel: string, difficulty: number)
   return `cache_${topicHash}_AFB${afbLevel}_D${difficulty}`.substring(0, 128);
 }
 
-async function callAIProvider({
-  provider,
-  apiKey,
-  model,
-  prompt,
-  temperature,
-  maxTokens,
-}: {
-  provider: 'claude' | 'gemini' | 'openrouter';
-  apiKey: string;
-  model: string;
-  prompt: string;
-  temperature: number;
-  maxTokens: number;
-}): Promise<string> {
-  switch (provider) {
-    case 'claude': {
-      const response = await fetch(AI_ENDPOINTS.claude, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
-        },
-        body: JSON.stringify({
-          model,
-          max_tokens: maxTokens,
-          temperature,
-          messages: [{ role: 'user', content: prompt }],
-        }),
-      });
 
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(`Claude API error: ${JSON.stringify(error)}`);
-      }
-
-      const data: any = await response.json();
-      return data.content[0].text;
-    }
-
-    case 'gemini': {
-      const endpoint = `${AI_ENDPOINTS.gemini}/${model}:generateContent?key=${apiKey}`;
-      console.log(`[Gemini] Calling endpoint: ${endpoint.replace(apiKey, '***')}`);
-
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature, maxOutputTokens: maxTokens },
-        }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`[Gemini] API error ${response.status}:`, errorText);
-        let errorMessage = `Gemini API error (${response.status})`;
-        try {
-          const errorJson = JSON.parse(errorText);
-          errorMessage = errorJson.error?.message || errorMessage;
-        } catch {
-          errorMessage = errorText || errorMessage;
-        }
-        throw new Error(errorMessage);
-      }
-
-      const data: any = await response.json();
-
-      if (!data.candidates?.[0]?.content?.parts?.[0]?.text) {
-        console.error('[Gemini] Unexpected response format:', JSON.stringify(data));
-        throw new Error('Gemini API returned unexpected response format');
-      }
-
-      return data.candidates[0].content.parts[0].text;
-    }
-
-    case 'openrouter': {
-      const response = await fetch(AI_ENDPOINTS.openrouter, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`,
-          'HTTP-Referer': 'https://learn-smart.app',
-          'X-Title': 'SLAM Learning App',
-        },
-        body: JSON.stringify({
-          model,
-          messages: [{ role: 'user', content: prompt }],
-          temperature,
-          max_tokens: maxTokens,
-        }),
-      });
-
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({ error: response.statusText }));
-        throw new Error(`OpenRouter API error (${response.status}): ${JSON.stringify(error)}`);
-      }
-
-      const data: any = await response.json();
-      if (!data.choices?.[0]?.message?.content) {
-        throw new Error(`OpenRouter returned no content`);
-      }
-      return data.choices[0].message.content;
-    }
-
-    default:
-      throw new Error(`Unknown provider: ${provider}`);
-  }
-}
 
 function buildPrompt(
   topics: Topic[],
@@ -577,11 +469,14 @@ export async function handleGenerateQuestions(c: Context<{ Bindings: Env }>) {
   try {
     const body = await c.req.json<GenerateQuestionsRequest>();
 
-    // Validate required fields
-    const { apiKey, userId, topics, userContext } = body;
-    if (!apiKey || !userId || !topics || !userContext) {
-      throw new APIError('Missing required fields: apiKey, userId, topics, userContext', 400);
+    // Validate required fields (apiKey is optional - falls back to env vars)
+    const { userId, topics, userContext } = body;
+    if (!userId || !topics || !userContext) {
+      throw new APIError('Missing required fields: userId, topics, userContext', 400);
     }
+    
+    // apiKey can be provided by user or falls back to env vars
+    const apiKey = body.apiKey;
 
     // Extract parameters with defaults
     const provider = body.provider || 'claude';
@@ -695,13 +590,15 @@ export async function handleGenerateQuestions(c: Context<{ Bindings: Env }>) {
     const prompt = buildPrompt(topics, userContext, afbLevel, questionCount);
     const temperature = userContext.autoModeAssessment?.currentAssessment?.temperature || 0.7;
 
-    const responseText = await callAIProvider({
-      provider,
-      apiKey,
+    // Use shared callAI with env fallback for API keys
+    const responseText = await callAI({
+      provider: provider as AIProviderType,
+      apiKey, // May be empty, will fall back to env vars
       model,
       prompt,
       temperature,
       maxTokens: 16000,
+      env: c.env,
     });
 
     // Parse JSON response (with repair for invalid LaTeX escape sequences from Gemini)

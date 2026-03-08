@@ -23,7 +23,11 @@ import { handleCollaborativeCanvas } from './api/collaborative-canvas';
 
 export interface Env {
   ENVIRONMENT: string;
-  // Add other environment variables here
+  // AI Provider API Keys (set via wrangler secret)
+  GEMINI_API_KEY: string;
+  ANTHROPIC_API_KEY: string;
+  // Firebase Service Account (set via wrangler secret)
+  FIREBASE_SERVICE_ACCOUNT: string;
 }
 
 // ============================================================================

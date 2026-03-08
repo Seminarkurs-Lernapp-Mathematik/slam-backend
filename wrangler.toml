@@ -6,6 +6,28 @@ main = "src/index.ts"
 compatibility_date = "2024-01-01"
 compatibility_flags = ["nodejs_compat"]
 
+# ============================================================================
+# ENVIRONMENT VARIABLES
+# ============================================================================
+# Set these using: wrangler secret put <VARIABLE_NAME>
+#
+# Required secrets:
+# - GEMINI_API_KEY: Google Gemini API key for AI generation
+# - ANTHROPIC_API_KEY: Anthropic Claude API key for AI generation
+# - FIREBASE_SERVICE_ACCOUNT: JSON string for Firestore access
+#
+# Example:
+#   wrangler secret put GEMINI_API_KEY
+#   wrangler secret put ANTHROPIC_API_KEY
+#   wrangler secret put FIREBASE_SERVICE_ACCOUNT
+#
+# Model configuration is stored in config/models.json
+# Each task specifies its provider (gemini/claude) and model ID directly
+
+# ============================================================================
+# ENVIRONMENTS
+# ============================================================================
+
 # Default (Development) Environment
 # Accessible at: slam-backend.{your-subdomain}.workers.dev
 [env.development]
@@ -27,8 +49,9 @@ name = "slam-backend-production"
 route = { pattern = "https://api.learn-smart.app/*", zone_name = "learn-smart.app" }
 vars = { ENVIRONMENT = "production" }
 
-# Bindings (same for all environments)
-# Uncomment and configure as needed
+# ============================================================================
+# BINDINGS (same for all environments)
+# ============================================================================
 
 # KV Namespace for caching
 # [[kv_namespaces]]
@@ -45,14 +68,6 @@ vars = { ENVIRONMENT = "production" }
 # [[r2_buckets]]
 # binding = "STORAGE"
 # bucket_name = "slam-storage"
-
-# Environment Variables (set via wrangler secret)
-# These should be set using: wrangler secret put VARIABLE_NAME
-#
-# Required secrets:
-# - CLAUDE_API_KEY (optional, if not using user-provided keys)
-# - GEMINI_API_KEY (optional, if not using user-provided keys)
-# - FIREBASE_SERVICE_ACCOUNT (JSON string for Firestore access)
 
 # Worker Limits
 # limits = { cpu_ms = 50 }
