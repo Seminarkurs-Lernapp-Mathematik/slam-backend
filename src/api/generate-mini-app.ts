@@ -3,7 +3,7 @@
  * Generates interactive HTML mini-apps using AI
  *
  * Features:
- * - Multi-provider support (Claude, Gemini)
+ * - Backend-managed AI configuration
  * - Generates standalone HTML with CSS and JavaScript
  * - Educational math-focused apps
  * - Safe, sandboxed code generation
@@ -13,6 +13,7 @@ import type { Context } from 'hono';
 import type { Env } from '../index';
 import { APIError } from '../types';
 import { parseJsonWithRepair } from '../utils/repairJson';
+import { callAI, getTaskModelConfig } from '../utils/callAI';
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -20,10 +21,6 @@ import { parseJsonWithRepair } from '../utils/repairJson';
 
 interface GenerateMiniAppRequest {
   description: string;
-  selectedModel?: string;
-  apiKey: string;
-  provider?: 'claude' | 'gemini' | 'openrouter';
-  complexity?: 'simple' | 'medium' | 'advanced';
 }
 
 interface GeneratedApp {
@@ -35,143 +32,8 @@ interface GeneratedApp {
 }
 
 // ============================================================================
-// MODEL ROUTER CONFIGURATION
-// ============================================================================
-
-const MODEL_TIERS = {
-  claude: {
-    simple: 'claude-haiku-4-5-20251001',
-    medium: 'claude-sonnet-4-5-20250929',
-    advanced: 'claude-sonnet-4-5-20250929',
-  },
-  gemini: {
-    simple: 'gemini-3-flash-preview',
-    medium: 'gemini-3-flash-preview',
-    advanced: 'gemini-3-pro-preview',
-  },
-  openrouter: {
-    simple: 'google/gemini-2.0-flash-exp:free',
-    medium: 'google/gemini-2.0-flash-thinking-exp:free',
-    advanced: 'deepseek/deepseek-r1:free',
-  },
-} as const;
-
-const AI_ENDPOINTS = {
-  claude: 'https://api.anthropic.com/v1/messages',
-  gemini: 'https://generativelanguage.googleapis.com/v1beta/models',
-  openrouter: 'https://openrouter.ai/api/v1/chat/completions',
-} as const;
-
-// ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
-
-function selectModel(
-  provider: 'claude' | 'gemini' | 'openrouter',
-  complexity: string,
-  preferredModel?: string
-): string {
-  if (preferredModel) return preferredModel;
-
-  const providerTiers = MODEL_TIERS[provider as keyof typeof MODEL_TIERS];
-  const tier = providerTiers?.[complexity as keyof typeof providerTiers] || MODEL_TIERS[provider as keyof typeof MODEL_TIERS].medium;
-  return tier;
-}
-
-async function callAIProvider({
-  provider,
-  apiKey,
-  model,
-  prompt,
-  temperature,
-  maxTokens,
-}: {
-  provider: 'claude' | 'gemini' | 'openrouter';
-  apiKey: string;
-  model: string;
-  prompt: string;
-  temperature: number;
-  maxTokens: number;
-}): Promise<string> {
-  switch (provider) {
-    case 'claude': {
-      const response = await fetch(AI_ENDPOINTS.claude, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
-        },
-        body: JSON.stringify({
-          model,
-          max_tokens: maxTokens,
-          temperature,
-          messages: [{ role: 'user', content: prompt }],
-        }),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(`Claude API error: ${JSON.stringify(error)}`);
-      }
-
-      const data: any = await response.json();
-      return data.content[0].text;
-    }
-
-    case 'gemini': {
-      const endpoint = `${AI_ENDPOINTS.gemini}/${model}:generateContent?key=${apiKey}`;
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature, maxOutputTokens: maxTokens },
-        }),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(`Gemini API error: ${JSON.stringify(error)}`);
-      }
-
-      const data: any = await response.json();
-      return data.candidates[0].content.parts[0].text;
-    }
-
-    case 'openrouter': {
-      const response = await fetch(AI_ENDPOINTS.openrouter, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`,
-          'HTTP-Referer': 'https://learn-smart.app',
-          'X-Title': 'SLAM Learning App',
-        },
-        body: JSON.stringify({
-          model,
-          messages: [{ role: 'user', content: prompt }],
-          temperature,
-          max_tokens: maxTokens,
-        }),
-      });
-
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({ error: response.statusText }));
-        throw new Error(`OpenRouter API error (${response.status}): ${JSON.stringify(error)}`);
-      }
-
-      const data: any = await response.json();
-      if (!data.choices?.[0]?.message?.content) {
-        throw new Error(`OpenRouter returned no content`);
-      }
-      return data.choices[0].message.content;
-    }
-
-    default:
-      throw new Error(`Unknown provider: ${provider}`);
-  }
-}
 
 function determineComplexity(description: string): 'simple' | 'medium' | 'advanced' {
   const lowerDesc = description.toLowerCase();
@@ -283,42 +145,40 @@ export async function handleGenerateMiniApp(c: Context<{ Bindings: Env }>) {
     const body = await c.req.json<Partial<GenerateMiniAppRequest>>();
 
     // Validate required fields
-    const { description, apiKey } = body;
-    if (!description || !apiKey) {
-      throw new APIError('Missing required fields: description, apiKey', 400);
+    const { description } = body;
+    if (!description) {
+      throw new APIError('Missing required field: description', 400);
     }
 
-    const provider = body.provider || 'claude';
-    const complexity = body.complexity || determineComplexity(description);
-    const selectedModel = body.selectedModel;
+    const complexity = determineComplexity(description);
 
     console.log('[generate-mini-app] Request:', {
-      provider,
       complexity,
       description: description.substring(0, 50) + '...',
     });
 
     // =======================================================================
-    // PHASE 1: Select model
+    // PHASE 1: Get task model configuration
     // =======================================================================
 
-    const model = selectModel(provider, complexity, selectedModel);
-    console.log(`[Model Router] Selected ${model} for ${provider} (complexity: ${complexity})`);
+    const taskConfig = await getTaskModelConfig('generateMiniApp');
+    console.log(`[Model Router] Using model ${taskConfig.model} from task config`);
 
     // =======================================================================
     // PHASE 2: Build prompt and call AI
     // =======================================================================
 
     const prompt = buildPrompt(description, complexity);
-    const temperature = 0.7;
 
-    const responseText = await callAIProvider({
-      provider,
-      apiKey,
-      model,
+    const responseText = await callAI({
+      provider: taskConfig.provider,
+      apiKey: '', // Will be fetched from env by callAI
+      model: taskConfig.model,
       prompt,
-      temperature,
-      maxTokens: 8000,
+      temperature: taskConfig.temperature,
+      maxTokens: taskConfig.maxTokens,
+      systemPrompt: taskConfig.systemPrompt,
+      env: c.env,
     });
 
     // =======================================================================
@@ -350,8 +210,8 @@ export async function handleGenerateMiniApp(c: Context<{ Bindings: Env }>) {
     return c.json({
       success: true,
       ...generatedApp,
-      modelUsed: model,
-      providerUsed: provider,
+      modelUsed: taskConfig.model,
+      providerUsed: taskConfig.provider,
     });
 
   } catch (error) {

@@ -26,7 +26,6 @@ interface ManageLearningPlanRequest {
   planId?: string;
   planData?: Partial<LearningPlan>;
   topic?: Topic;
-  apiKey?: string;
   firebaseConfig?: {
     projectId: string;
     accessToken: string;

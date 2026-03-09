@@ -12,6 +12,7 @@
 import type { Context } from 'hono';
 import type { Env } from '../index';
 import { APIError } from '../types';
+import { callAI, getTaskModelConfig } from '../utils/callAI';
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -21,9 +22,6 @@ interface UpdateAutoModeRequest {
   userId: string;
   currentSettings: AutoModeSettings;
   recentPerformance: PerformanceRecord[];
-  apiKey: string;
-  provider?: 'claude' | 'gemini' | 'openrouter';
-  selectedModel?: string;
 }
 
 interface AutoModeSettings {
@@ -51,126 +49,8 @@ interface AutoModeAssessment {
 }
 
 // ============================================================================
-// MODEL CONFIGURATION
-// ============================================================================
-
-const MODEL_TIERS = {
-  claude: {
-    standard: 'claude-sonnet-4-5-20250929',
-  },
-  gemini: {
-    standard: 'gemini-3-pro-preview',
-  },
-  openrouter: {
-    standard: 'google/gemini-2.0-flash-thinking-exp:free',
-  },
-} as const;
-
-const AI_ENDPOINTS = {
-  claude: 'https://api.anthropic.com/v1/messages',
-  gemini: 'https://generativelanguage.googleapis.com/v1beta/models',
-  openrouter: 'https://openrouter.ai/api/v1/chat/completions',
-} as const;
-
-// ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
-
-function selectModel(provider: 'claude' | 'gemini' | 'openrouter', preferredModel?: string): string {
-  if (preferredModel) return preferredModel;
-  return MODEL_TIERS[provider as keyof typeof MODEL_TIERS].standard;
-}
-
-async function callAIProvider({
-  provider,
-  apiKey,
-  model,
-  prompt,
-}: {
-  provider: 'claude' | 'gemini' | 'openrouter';
-  apiKey: string;
-  model: string;
-  prompt: string;
-}): Promise<string> {
-  switch (provider) {
-    case 'claude': {
-      const response = await fetch(AI_ENDPOINTS.claude, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
-        },
-        body: JSON.stringify({
-          model,
-          max_tokens: 2000,
-          temperature: 0.3, // Lower for consistent analysis
-          messages: [{ role: 'user', content: prompt }],
-        }),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(`Claude API error: ${JSON.stringify(error)}`);
-      }
-
-      const data: any = await response.json();
-      return data.content[0].text;
-    }
-
-    case 'gemini': {
-      const endpoint = `${AI_ENDPOINTS.gemini}/${model}:generateContent?key=${apiKey}`;
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.3, maxOutputTokens: 2000 },
-        }),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(`Gemini API error: ${JSON.stringify(error)}`);
-      }
-
-      const data: any = await response.json();
-      return data.candidates[0].content.parts[0].text;
-    }
-
-    case 'openrouter': {
-      const response = await fetch(AI_ENDPOINTS.openrouter, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`,
-          'HTTP-Referer': 'https://learn-smart.app',
-          'X-Title': 'SLAM Learning App',
-        },
-        body: JSON.stringify({
-          model,
-          messages: [{ role: 'user', content: prompt }],
-          temperature: 0.3,
-          max_tokens: 2000,
-        }),
-      });
-
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({ error: response.statusText }));
-        throw new Error(`OpenRouter API error (${response.status}): ${JSON.stringify(error)}`);
-      }
-
-      const data: any = await response.json();
-      if (!data.choices?.[0]?.message?.content) {
-        throw new Error(`OpenRouter returned no content`);
-      }
-      return data.choices[0].message.content;
-    }
-
-    default:
-      throw new Error(`Unknown provider: ${provider}`);
-  }
-}
 
 function calculatePerformanceMetrics(performance: PerformanceRecord[]) {
   if (performance.length === 0) {
@@ -334,7 +214,7 @@ export async function handleUpdateAutoMode(c: Context<{ Bindings: Env }>) {
     const body = await c.req.json<Partial<UpdateAutoModeRequest>>();
 
     // Validate required fields
-    const { userId, currentSettings, recentPerformance, apiKey } = body;
+    const { userId, currentSettings, recentPerformance } = body;
     
     if (!userId) {
       throw new APIError('Missing required field: userId', 400);
@@ -342,17 +222,11 @@ export async function handleUpdateAutoMode(c: Context<{ Bindings: Env }>) {
     if (!currentSettings) {
       throw new APIError('Missing required field: currentSettings', 400);
     }
-    if (!apiKey) {
-      throw new APIError('Missing required field: apiKey', 400);
-    }
 
-    const provider = body.provider || 'claude';
-    const selectedModel = body.selectedModel;
     const performance = recentPerformance || [];
 
     console.log('[update-auto-mode] Request:', {
       userId,
-      provider,
       performanceCount: performance.length,
     });
 
@@ -376,11 +250,11 @@ export async function handleUpdateAutoMode(c: Context<{ Bindings: Env }>) {
     }
 
     // =======================================================================
-    // PHASE 2: Select model and build prompt
+    // PHASE 2: Get task configuration from models.json
     // =======================================================================
 
-    const model = selectModel(provider, selectedModel);
-    console.log(`[Model Router] Selected ${model} for ${provider}`);
+    const taskConfig = await getTaskModelConfig('updateAutoMode');
+    console.log(`[Model Router] Using ${taskConfig.model} for updateAutoMode task`);
 
     const prompt = buildPrompt(currentSettings, performance, metrics);
 
@@ -388,11 +262,14 @@ export async function handleUpdateAutoMode(c: Context<{ Bindings: Env }>) {
     // PHASE 3: Call AI for assessment
     // =======================================================================
 
-    const responseText = await callAIProvider({
-      provider,
-      apiKey,
-      model,
+    const responseText = await callAI({
+      provider: taskConfig.provider,
+      model: taskConfig.model,
       prompt,
+      temperature: taskConfig.temperature,
+      maxTokens: taskConfig.maxTokens,
+      systemPrompt: taskConfig.systemPrompt,
+      env: c.env,
     });
 
     // =======================================================================
@@ -423,8 +300,8 @@ export async function handleUpdateAutoMode(c: Context<{ Bindings: Env }>) {
       success: true,
       ...assessment,
       metrics,
-      modelUsed: model,
-      providerUsed: provider,
+      modelUsed: taskConfig.model,
+      providerUsed: taskConfig.provider,
     });
 
   } catch (error) {

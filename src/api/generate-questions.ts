@@ -3,11 +3,9 @@
  * Migrated from functions/api/generate-questions.js
  *
  * Features:
- * - Intelligent model selection based on complexity
  * - Firestore question caching (7-day cache)
- * - Multi-provider support (Claude, Gemini)
+ * - Backend-managed AI model configuration via models.json
  * - AFB-level aware generation
- * - Cost optimization for simple queries
  */
 
 import type { Context } from 'hono';
@@ -15,21 +13,17 @@ import type { Env } from '../index';
 import type { Topic, UserContext, QuestionSession, Question, QuestionOption, QuestionHint, StepByStepData } from '../types';
 import { APIError } from '../types';
 import { extractAndParseJson } from '../utils/repairJson';
-import { callAI, getTaskModelConfig, type AIProviderType } from '../utils/callAI';
+import { callAI, getTaskModelConfig } from '../utils/callAI';
 
 // ============================================================================
 // TYPE DEFINITIONS
 // ============================================================================
 
 interface GenerateQuestionsRequest {
-  apiKey?: string;  // Optional: falls back to env vars
   userId: string;
   learningPlanItemId: number;
   topics: Topic[];
   userContext: UserContext;
-  selectedModel?: string;
-  provider?: 'claude' | 'gemini' | 'openrouter';
-  complexity?: 'light' | 'standard' | 'heavy' | null;
   afbLevel?: 'I' | 'II' | 'III';
   questionCount?: number;
   useCache?: boolean;
@@ -41,73 +35,8 @@ interface GenerateQuestionsRequest {
 }
 
 // ============================================================================
-// MODEL ROUTER CONFIGURATION
-// ============================================================================
-
-const MODEL_TIERS = {
-  claude: {
-    light: 'claude-haiku-4-5-20251001',
-    standard: 'claude-sonnet-4-5-20250929',
-    heavy: 'claude-sonnet-4-5-20250929',
-  },
-  gemini: {
-    light: 'gemini-1.5-flash-latest',
-    standard: 'gemini-1.5-flash-latest',
-    heavy: 'gemini-1.5-pro-latest',
-  },
-  openrouter: {
-    light: 'google/gemini-2.0-flash-exp:free',
-    standard: 'google/gemini-2.0-flash-thinking-exp:free',
-    heavy: 'deepseek/deepseek-r1:free',
-  },
-} as const;
-
-const AI_ENDPOINTS = {
-  claude: 'https://api.anthropic.com/v1/messages',
-  gemini: 'https://generativelanguage.googleapis.com/v1beta/models',
-  openrouter: 'https://openrouter.ai/api/v1/chat/completions',
-} as const;
-
-// ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
-
-function determineModelTier({
-  afbLevel = 'II',
-  hasGeoGebra = false,
-  questionCount = 20,
-  hasProof = false,
-  isNumericOnly = false,
-}: {
-  afbLevel?: 'I' | 'II' | 'III';
-  hasGeoGebra?: boolean;
-  questionCount?: number;
-  hasProof?: boolean;
-  isNumericOnly?: boolean;
-}): 'light' | 'standard' | 'heavy' {
-  // Heavy tier for complex tasks
-  if (hasGeoGebra || hasProof || afbLevel === 'III' || questionCount > 15) {
-    return 'heavy';
-  }
-
-  // Light tier for simple tasks
-  if (afbLevel === 'I' || (isNumericOnly && questionCount <= 5) || questionCount <= 3) {
-    return 'light';
-  }
-
-  return 'standard';
-}
-
-function selectModel(
-  provider: 'claude' | 'gemini' | 'openrouter',
-  complexityOptions: Parameters<typeof determineModelTier>[0],
-  preferredModel?: string | null
-): string {
-  if (preferredModel) return preferredModel;
-
-  const tier = determineModelTier(complexityOptions);
-  return MODEL_TIERS[provider as keyof typeof MODEL_TIERS]?.[tier] || MODEL_TIERS.claude.standard;
-}
 
 function generateCacheKey(topics: Topic[], afbLevel: string, difficulty: number): string {
   const topicHash = topics
@@ -469,29 +398,22 @@ export async function handleGenerateQuestions(c: Context<{ Bindings: Env }>) {
   try {
     const body = await c.req.json<GenerateQuestionsRequest>();
 
-    // Validate required fields (apiKey is optional - falls back to env vars)
+    // Validate required fields
     const { userId, topics, userContext } = body;
     if (!userId || !topics || !userContext) {
       throw new APIError('Missing required fields: userId, topics, userContext', 400);
     }
-    
-    // apiKey can be provided by user or falls back to env vars
-    const apiKey = body.apiKey;
 
     // Extract parameters with defaults
-    const provider = body.provider || 'claude';
     const afbLevel = body.afbLevel || 'II';
     const questionCount = body.questionCount || 20;
     const useCache = body.useCache !== false;
     const forceRegenerate = body.forceRegenerate || false;
     const learningPlanItemId = body.learningPlanItemId;
-    const selectedModel = body.selectedModel;
-    const complexity = body.complexity;
     const firebaseConfig = body.firebaseConfig;
 
     console.log('[generate-questions] Request:', {
       userId,
-      provider,
       afbLevel,
       questionCount,
       topicCount: topics.length,
@@ -552,35 +474,13 @@ export async function handleGenerateQuestions(c: Context<{ Bindings: Env }>) {
     }
 
     // ========================================================================
-    // PHASE 2: Model Router - Select optimal model
+    // PHASE 2: Get AI configuration from models.json
     // ========================================================================
 
-    const hasGeoGebra = topics.some(
-      (t) =>
-        t.thema?.toLowerCase().includes('geometrie') ||
-        t.thema?.toLowerCase().includes('funktion') ||
-        t.unterthema?.toLowerCase().includes('graph')
-    );
-
-    const isNumericOnly = topics.every(
-      (t) =>
-        t.thema?.toLowerCase().includes('rechnen') ||
-        t.thema?.toLowerCase().includes('arithmetik')
-    );
-
-    const model = selectModel(
-      provider,
-      {
-        afbLevel,
-        hasGeoGebra,
-        questionCount,
-        isNumericOnly,
-      },
-      selectedModel
-    );
+    const taskConfig = await getTaskModelConfig('generateQuestions');
 
     console.log(
-      `[Model Router] Selected ${model} for ${provider} (AFB: ${afbLevel}, GeoGebra: ${hasGeoGebra}, Count: ${questionCount})`
+      `[Task Config] Using ${taskConfig.model} (${taskConfig.provider}) for generateQuestions task`
     );
 
     // ========================================================================
@@ -588,16 +488,16 @@ export async function handleGenerateQuestions(c: Context<{ Bindings: Env }>) {
     // ========================================================================
 
     const prompt = buildPrompt(topics, userContext, afbLevel, questionCount);
-    const temperature = userContext.autoModeAssessment?.currentAssessment?.temperature || 0.7;
 
-    // Use shared callAI with env fallback for API keys
+    // Use shared callAI with task configuration from models.json
     const responseText = await callAI({
-      provider: provider as AIProviderType,
-      apiKey, // May be empty, will fall back to env vars
-      model,
+      provider: taskConfig.provider,
+      apiKey: '', // Will be fetched from env by callAI
+      model: taskConfig.model,
       prompt,
-      temperature,
-      maxTokens: 16000,
+      temperature: taskConfig.temperature,
+      maxTokens: taskConfig.maxTokens,
+      systemPrompt: taskConfig.systemPrompt,
       env: c.env,
     });
 
@@ -646,8 +546,8 @@ export async function handleGenerateQuestions(c: Context<{ Bindings: Env }>) {
               },
             },
             cachedAt: { timestampValue: new Date().toISOString() },
-            model: { stringValue: model },
-            provider: { stringValue: provider },
+            model: { stringValue: taskConfig.model },
+            provider: { stringValue: taskConfig.provider },
           },
         };
 
@@ -682,8 +582,8 @@ export async function handleGenerateQuestions(c: Context<{ Bindings: Env }>) {
       totalQuestions: questionsData.questions.length,
       fromCache: false,
       cacheKey,
-      modelUsed: model,
-      providerUsed: provider,
+      modelUsed: taskConfig.model,
+      providerUsed: taskConfig.provider,
     });
   } catch (error) {
     console.error('[generate-questions] Error:', error);

@@ -3,7 +3,7 @@
  * Generates personalized, progressive hints for students using AI
  *
  * Features:
- * - Multi-provider support (Claude, Gemini)
+ * - Backend-managed AI configuration (models.json)
  * - Progressive hint specificity based on hintsUsed count
  * - Misconception-aware hints when userAnswer is provided
  * - German language hints for math context
@@ -14,6 +14,7 @@ import type { Context } from 'hono';
 import type { Env } from '../index';
 import { APIError } from '../types';
 import { parseJsonWithRepair } from '../utils/repairJson';
+import { callAI, getTaskModelConfig } from '../utils/callAI';
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -23,137 +24,14 @@ interface CustomHintRequest {
   question: string;
   userAnswer?: string;
   hintsUsed?: number;
-  apiKey?: string;
-  provider?: 'claude' | 'gemini' | 'openrouter';
-  selectedModel?: string;
   solution?: string;
   topic?: string;
   difficulty?: number;
 }
 
 // ============================================================================
-// MODEL ROUTER CONFIGURATION
-// ============================================================================
-
-const MODEL_TIERS = {
-  claude: {
-    light: 'claude-haiku-4-5-20251001',
-    standard: 'claude-sonnet-4-5-20250929',
-  },
-  gemini: {
-    light: 'gemini-3-flash-preview',
-    standard: 'gemini-3-pro-preview',
-  },
-  openrouter: {
-    light: 'google/gemini-2.0-flash-exp:free',
-    standard: 'google/gemini-2.0-flash-thinking-exp:free',
-  },
-} as const;
-
-const AI_ENDPOINTS = {
-  claude: 'https://api.anthropic.com/v1/messages',
-  gemini: 'https://generativelanguage.googleapis.com/v1beta/models',
-  openrouter: 'https://openrouter.ai/api/v1/chat/completions',
-} as const;
-
-// ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
-
-async function callAIProvider({
-  provider,
-  apiKey,
-  model,
-  prompt,
-  temperature,
-  maxTokens,
-}: {
-  provider: 'claude' | 'gemini' | 'openrouter';
-  apiKey: string;
-  model: string;
-  prompt: string;
-  temperature: number;
-  maxTokens: number;
-}): Promise<string> {
-  switch (provider) {
-    case 'claude': {
-      const response = await fetch(AI_ENDPOINTS.claude, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
-        },
-        body: JSON.stringify({
-          model,
-          max_tokens: maxTokens,
-          temperature,
-          messages: [{ role: 'user', content: prompt }],
-        }),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(`Claude API error: ${JSON.stringify(error)}`);
-      }
-
-      const data: any = await response.json();
-      return data.content[0].text;
-    }
-
-    case 'gemini': {
-      const endpoint = `${AI_ENDPOINTS.gemini}/${model}:generateContent?key=${apiKey}`;
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature, maxOutputTokens: maxTokens },
-        }),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(`Gemini API error: ${JSON.stringify(error)}`);
-      }
-
-      const data: any = await response.json();
-      return data.candidates[0].content.parts[0].text;
-    }
-
-    case 'openrouter': {
-      const response = await fetch(AI_ENDPOINTS.openrouter, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`,
-          'HTTP-Referer': 'https://learn-smart.app',
-          'X-Title': 'SLAM Learning App',
-        },
-        body: JSON.stringify({
-          model,
-          messages: [{ role: 'user', content: prompt }],
-          temperature,
-          max_tokens: maxTokens,
-        }),
-      });
-
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({ error: response.statusText }));
-        throw new Error(`OpenRouter API error (${response.status}): ${JSON.stringify(error)}`);
-      }
-
-      const data: any = await response.json();
-      if (!data.choices?.[0]?.message?.content) {
-        throw new Error(`OpenRouter returned no content`);
-      }
-      return data.choices[0].message.content;
-    }
-
-    default:
-      throw new Error(`Unknown provider: ${provider}`);
-  }
-}
 
 function buildHintPrompt(
   question: string,
@@ -223,32 +101,28 @@ export async function handleCustomHint(c: Context<{ Bindings: Env }>) {
     const body = await c.req.json<CustomHintRequest>();
 
     // Validate required fields
-    const { question, apiKey, userAnswer, hintsUsed, selectedModel, solution, topic, difficulty } = body;
+    const { question, userAnswer, hintsUsed, solution, topic, difficulty } = body;
     if (!question) {
       throw new APIError('Missing required field: question', 400);
     }
 
-    if (!apiKey) {
-      throw new APIError('Missing required field: apiKey', 400);
-    }
+    console.log(`[custom-hint] Request: hintsUsed=${hintsUsed || 0}, hasUserAnswer=${!!userAnswer}`);
 
-    // Determine provider and model
-    // Use the light model for hints since they are short responses
-    const provider = body.provider || 'claude';
-    const model = selectedModel || MODEL_TIERS[provider as keyof typeof MODEL_TIERS]?.light || MODEL_TIERS.claude.light;
-
-    console.log(`[custom-hint] Request: provider=${provider}, model=${model}, hintsUsed=${hintsUsed || 0}, hasUserAnswer=${!!userAnswer}`);
+    // Get task configuration from models.json
+    const taskConfig = await getTaskModelConfig('customHint');
 
     // Build prompt and call AI
     const prompt = buildHintPrompt(question, userAnswer, hintsUsed, solution, topic, difficulty);
 
-    const responseText = await callAIProvider({
-      provider,
-      apiKey,
-      model,
+    const responseText = await callAI({
+      provider: taskConfig.provider,
+      apiKey: '', // Will be fetched from env by callAI
+      model: taskConfig.model,
       prompt,
-      temperature: 0.6,
-      maxTokens: 1000,
+      temperature: taskConfig.temperature,
+      maxTokens: taskConfig.maxTokens,
+      systemPrompt: taskConfig.systemPrompt,
+      env: c.env,
     });
 
     // Parse the AI response

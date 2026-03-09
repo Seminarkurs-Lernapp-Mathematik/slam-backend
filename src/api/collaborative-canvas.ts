@@ -12,6 +12,7 @@
 import type { Context } from 'hono';
 import type { Env } from '../index';
 import { APIError } from '../types';
+import { callVisionAI, getTaskModelConfig } from '../utils/callAI';
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -20,9 +21,6 @@ import { APIError } from '../types';
 interface CollaborativeCanvasRequest {
   imageBase64: string;
   question: string;
-  apiKey: string;
-  provider?: 'claude' | 'gemini';
-  selectedModel?: string;
   gradeLevel?: string;
   courseType?: string;
 }
@@ -35,117 +33,8 @@ interface CanvasResponse {
 }
 
 // ============================================================================
-// MODEL CONFIGURATION
-// ============================================================================
-
-const VISION_MODELS = {
-  claude: 'claude-sonnet-4-5-20250929',
-  gemini: 'gemini-2.0-flash',
-} as const;
-
-const AI_ENDPOINTS = {
-  claude: 'https://api.anthropic.com/v1/messages',
-  gemini: 'https://generativelanguage.googleapis.com/v1beta/models',
-} as const;
-
-// ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
-
-function selectModel(provider: 'claude' | 'gemini', preferredModel?: string): string {
-  if (preferredModel) return preferredModel;
-  return VISION_MODELS[provider];
-}
-
-async function callVisionProvider({
-  provider,
-  apiKey,
-  model,
-  imageBase64,
-  prompt,
-}: {
-  provider: 'claude' | 'gemini';
-  apiKey: string;
-  model: string;
-  imageBase64: string;
-  prompt: string;
-}): Promise<string> {
-  switch (provider) {
-    case 'claude': {
-      const response = await fetch(AI_ENDPOINTS.claude, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
-        },
-        body: JSON.stringify({
-          model,
-          max_tokens: 4000,
-          temperature: 0.4,
-          messages: [{
-            role: 'user',
-            content: [
-              {
-                type: 'image',
-                source: {
-                  type: 'base64',
-                  media_type: 'image/png',
-                  data: imageBase64,
-                },
-              },
-              {
-                type: 'text',
-                text: prompt,
-              },
-            ],
-          }],
-        }),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(`Claude API error: ${JSON.stringify(error)}`);
-      }
-
-      const data: any = await response.json();
-      return data.content[0].text;
-    }
-
-    case 'gemini': {
-      const endpoint = `${AI_ENDPOINTS.gemini}/${model}:generateContent?key=${apiKey}`;
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{
-            parts: [
-              { text: prompt },
-              {
-                inline_data: {
-                  mime_type: 'image/png',
-                  data: imageBase64,
-                },
-              },
-            ],
-          }],
-          generationConfig: { temperature: 0.4, maxOutputTokens: 4000 },
-        }),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(`Gemini API error: ${JSON.stringify(error)}`);
-      }
-
-      const data: any = await response.json();
-      return data.candidates[0].content.parts[0].text;
-    }
-
-    default:
-      throw new Error(`Unknown provider: ${provider}`);
-  }
-}
 
 function buildPrompt(question: string, gradeLevel?: string, courseType?: string): string {
   return `Du bist ein Mathematik-Tutor. Ein Schüler hat ein mathematisches Problem auf einem digitalen Canvas gezeichnet/aufgeschrieben und hat eine Frage dazu.
@@ -235,15 +124,12 @@ export async function handleCollaborativeCanvas(c: Context<{ Bindings: Env }>) {
     const body = await c.req.json<Partial<CollaborativeCanvasRequest>>();
 
     // Validate required fields
-    const { imageBase64, question, apiKey } = body;
+    const { imageBase64, question } = body;
     if (!imageBase64) {
       throw new APIError('Missing required field: imageBase64', 400);
     }
     if (!question || question.trim().length === 0) {
       throw new APIError('Missing required field: question', 400);
-    }
-    if (!apiKey) {
-      throw new APIError('Missing required field: apiKey', 400);
     }
 
     // Validate image data format
@@ -258,23 +144,20 @@ export async function handleCollaborativeCanvas(c: Context<{ Bindings: Env }>) {
       throw new APIError(`Image too large: maximum 10MB allowed`, 400);
     }
 
-    const provider = body.provider || 'claude';
-    const selectedModel = body.selectedModel;
     const gradeLevel = body.gradeLevel;
     const courseType = body.courseType;
 
     console.log('[collaborative-canvas] Request:', {
-      provider,
       questionLength: question.length,
       imageSize: estimatedSize,
     });
 
     // =======================================================================
-    // PHASE 1: Select model
+    // PHASE 1: Get task configuration from models.json
     // =======================================================================
 
-    const model = selectModel(provider, selectedModel);
-    console.log(`[Model Router] Selected ${model} for ${provider}`);
+    const taskConfig = await getTaskModelConfig('collaborativeCanvas');
+    console.log(`[Model Router] Using ${taskConfig.model} for collaborativeCanvas task`);
 
     // =======================================================================
     // PHASE 2: Build prompt and call AI
@@ -282,12 +165,14 @@ export async function handleCollaborativeCanvas(c: Context<{ Bindings: Env }>) {
 
     const prompt = buildPrompt(question, gradeLevel, courseType);
 
-    const responseText = await callVisionProvider({
-      provider,
-      apiKey,
-      model,
+    const responseText = await callVisionAI({
+      provider: taskConfig.provider,
+      model: taskConfig.model,
       imageBase64,
       prompt,
+      temperature: taskConfig.temperature,
+      maxTokens: taskConfig.maxTokens,
+      env: c.env,
     });
 
     // =======================================================================
@@ -305,8 +190,8 @@ export async function handleCollaborativeCanvas(c: Context<{ Bindings: Env }>) {
       return c.json({
         success: true,
         answer: responseText,
-        modelUsed: model,
-        providerUsed: provider,
+        modelUsed: taskConfig.model,
+        providerUsed: taskConfig.provider,
       });
     }
 
@@ -324,8 +209,8 @@ export async function handleCollaborativeCanvas(c: Context<{ Bindings: Env }>) {
     return c.json({
       success: true,
       ...result,
-      modelUsed: model,
-      providerUsed: provider,
+      modelUsed: taskConfig.model,
+      providerUsed: taskConfig.provider,
     });
 
   } catch (error) {

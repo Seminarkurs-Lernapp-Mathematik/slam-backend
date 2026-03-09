@@ -3,7 +3,7 @@
  * Generates GeoGebra commands for mathematical visualizations
  *
  * Features:
- * - Multi-provider support (Claude, Gemini)
+ * - Backend-configured AI provider and model
  * - Generates valid GeoGebra syntax commands
  * - Topic-based or prompt-based generation
  * - Educational explanations
@@ -13,6 +13,7 @@ import type { Context } from 'hono';
 import type { Env } from '../index';
 import { APIError } from '../types';
 import { parseJsonWithRepair } from '../utils/repairJson';
+import { callAI, getTaskModelConfig } from '../utils/callAI';
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -22,9 +23,6 @@ interface GenerateGeogebraRequest {
   questionText?: string;
   topic?: string;
   userPrompt?: string;
-  apiKey: string;
-  provider?: 'claude' | 'gemini' | 'openrouter';
-  selectedModel?: string;
   gradeLevel?: string;
 }
 
@@ -36,136 +34,8 @@ interface GeoGebraResult {
 }
 
 // ============================================================================
-// MODEL ROUTER CONFIGURATION
-// ============================================================================
-
-const MODEL_TIERS = {
-  claude: {
-    light: 'claude-haiku-4-5-20251001',
-    standard: 'claude-sonnet-4-5-20250929',
-  },
-  gemini: {
-    light: 'gemini-3-flash-preview',
-    standard: 'gemini-3-pro-preview',
-  },
-  openrouter: {
-    light: 'google/gemini-2.0-flash-exp:free',
-    standard: 'google/gemini-2.0-flash-thinking-exp:free',
-  },
-} as const;
-
-const AI_ENDPOINTS = {
-  claude: 'https://api.anthropic.com/v1/messages',
-  gemini: 'https://generativelanguage.googleapis.com/v1beta/models',
-  openrouter: 'https://openrouter.ai/api/v1/chat/completions',
-} as const;
-
-// ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
-
-function selectModel(
-  provider: 'claude' | 'gemini' | 'openrouter',
-  preferredModel?: string
-): string {
-  if (preferredModel) return preferredModel;
-  return MODEL_TIERS[provider as keyof typeof MODEL_TIERS].standard;
-}
-
-async function callAIProvider({
-  provider,
-  apiKey,
-  model,
-  prompt,
-  temperature,
-  maxTokens,
-}: {
-  provider: 'claude' | 'gemini' | 'openrouter';
-  apiKey: string;
-  model: string;
-  prompt: string;
-  temperature: number;
-  maxTokens: number;
-}): Promise<string> {
-  switch (provider) {
-    case 'claude': {
-      const response = await fetch(AI_ENDPOINTS.claude, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
-        },
-        body: JSON.stringify({
-          model,
-          max_tokens: maxTokens,
-          temperature,
-          messages: [{ role: 'user', content: prompt }],
-        }),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(`Claude API error: ${JSON.stringify(error)}`);
-      }
-
-      const data: any = await response.json();
-      return data.content[0].text;
-    }
-
-    case 'gemini': {
-      const endpoint = `${AI_ENDPOINTS.gemini}/${model}:generateContent?key=${apiKey}`;
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature, maxOutputTokens: maxTokens },
-        }),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(`Gemini API error: ${JSON.stringify(error)}`);
-      }
-
-      const data: any = await response.json();
-      return data.candidates[0].content.parts[0].text;
-    }
-
-    case 'openrouter': {
-      const response = await fetch(AI_ENDPOINTS.openrouter, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`,
-          'HTTP-Referer': 'https://learn-smart.app',
-          'X-Title': 'SLAM Learning App',
-        },
-        body: JSON.stringify({
-          model,
-          messages: [{ role: 'user', content: prompt }],
-          temperature,
-          max_tokens: maxTokens,
-        }),
-      });
-
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({ error: response.statusText }));
-        throw new Error(`OpenRouter API error (${response.status}): ${JSON.stringify(error)}`);
-      }
-
-      const data: any = await response.json();
-      if (!data.choices?.[0]?.message?.content) {
-        throw new Error(`OpenRouter returned no content`);
-      }
-      return data.choices[0].message.content;
-    }
-
-    default:
-      throw new Error(`Unknown provider: ${provider}`);
-  }
-}
 
 function buildPrompt(params: {
   questionText?: string;
@@ -279,34 +149,25 @@ export async function handleGenerateGeogebra(c: Context<{ Bindings: Env }>) {
   try {
     const body = await c.req.json<Partial<GenerateGeogebraRequest>>();
 
-    // Validate required fields
-    const { apiKey } = body;
-    if (!apiKey) {
-      throw new APIError('Missing required field: apiKey', 400);
-    }
-
     // Need at least one of: questionText, topic, userPrompt
     if (!body.questionText && !body.topic && !body.userPrompt) {
       throw new APIError('Missing context: provide questionText, topic, or userPrompt', 400);
     }
 
-    const provider = body.provider || 'claude';
-    const selectedModel = body.selectedModel;
     const gradeLevel = body.gradeLevel;
 
     console.log('[generate-geogebra] Request:', {
-      provider,
       hasQuestionText: !!body.questionText,
       hasTopic: !!body.topic,
       hasUserPrompt: !!body.userPrompt,
     });
 
     // =======================================================================
-    // PHASE 1: Select model
+    // PHASE 1: Get task configuration from models.json
     // =======================================================================
 
-    const model = selectModel(provider, selectedModel);
-    console.log(`[Model Router] Selected ${model} for ${provider}`);
+    const taskConfig = await getTaskModelConfig('generateGeogebra');
+    console.log(`[Model Router] Using ${taskConfig.model} for generateGeogebra task`);
 
     // =======================================================================
     // PHASE 2: Build prompt and call AI
@@ -319,15 +180,15 @@ export async function handleGenerateGeogebra(c: Context<{ Bindings: Env }>) {
       gradeLevel,
     });
 
-    const temperature = 0.6; // Lower for more consistent syntax
-
-    const responseText = await callAIProvider({
-      provider,
-      apiKey,
-      model,
+    const responseText = await callAI({
+      provider: taskConfig.provider,
+      apiKey: '', // Will be fetched from env by callAI
+      model: taskConfig.model,
       prompt,
-      temperature,
-      maxTokens: 4000,
+      temperature: taskConfig.temperature,
+      maxTokens: taskConfig.maxTokens,
+      systemPrompt: taskConfig.systemPrompt,
+      env: c.env,
     });
 
     // =======================================================================
@@ -357,8 +218,8 @@ export async function handleGenerateGeogebra(c: Context<{ Bindings: Env }>) {
     return c.json({
       success: true,
       ...result,
-      modelUsed: model,
-      providerUsed: provider,
+      modelUsed: taskConfig.model,
+      providerUsed: taskConfig.provider,
     });
 
   } catch (error) {

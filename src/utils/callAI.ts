@@ -298,6 +298,118 @@ export async function getTaskModelConfig(taskName: string): Promise<TaskModelCon
   return taskConfig;
 }
 
+export interface CallVisionAIOptions {
+  provider: AIProviderType;
+  model: string;
+  imageBase64: string;
+  prompt: string;
+  temperature?: number;
+  maxTokens?: number;
+  mimeType?: string;
+  env: Env;
+}
+
+/**
+ * Call AI with vision capabilities (for image analysis)
+ */
+export async function callVisionAI({
+  provider,
+  model,
+  imageBase64,
+  prompt,
+  temperature = 0.4,
+  maxTokens = 4000,
+  mimeType = 'image/png',
+  env,
+}: CallVisionAIOptions): Promise<string> {
+  const apiKey = getApiKey(provider, env);
+  
+  switch (provider) {
+    case 'claude': {
+      const response = await fetch(AI_ENDPOINTS.claude, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model,
+          max_tokens: maxTokens,
+          temperature,
+          messages: [{
+            role: 'user',
+            content: [
+              {
+                type: 'image',
+                source: {
+                  type: 'base64',
+                  media_type: mimeType,
+                  data: imageBase64,
+                },
+              },
+              {
+                type: 'text',
+                text: prompt,
+              },
+            ],
+          }],
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: response.statusText }));
+        throw new Error(`Claude Vision API error (${response.status}): ${JSON.stringify(error)}`);
+      }
+
+      const data: any = await response.json();
+      return data.content[0].text;
+    }
+
+    case 'gemini': {
+      const endpoint = `${AI_ENDPOINTS.gemini}/${model}:generateContent?key=${apiKey}`;
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{
+            parts: [
+              { text: prompt },
+              {
+                inline_data: {
+                  mime_type: mimeType,
+                  data: imageBase64,
+                },
+              },
+            ],
+          }],
+          generationConfig: { temperature, maxOutputTokens: maxTokens },
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        let errorMessage = `Gemini Vision API error (${response.status})`;
+        try {
+          const errorJson = JSON.parse(errorText);
+          errorMessage = errorJson.error?.message || errorMessage;
+        } catch { errorMessage = errorText || errorMessage; }
+        throw new Error(errorMessage);
+      }
+
+      const data: any = await response.json();
+      if (!data.candidates?.[0]?.content?.parts?.[0]?.text) {
+        const blockReason = data.candidates?.[0]?.finishReason || data.promptFeedback?.blockReason;
+        throw new Error(`Gemini returned no content. Block reason: ${blockReason || 'unknown'}`);
+      }
+      return data.candidates[0].content.parts[0].text;
+    }
+
+    default:
+      throw new Error(`Unknown provider: ${provider}`);
+  }
+}
+
 /**
  * Call AI for a specific task using its configured model and system prompt
  * 
