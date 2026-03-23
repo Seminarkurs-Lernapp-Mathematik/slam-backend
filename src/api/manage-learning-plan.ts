@@ -13,6 +13,7 @@ import type { Context } from 'hono';
 import type { Env } from '../index';
 import type { Topic } from '../types';
 import { APIError } from '../types';
+import { getFirebaseConfig } from '../utils/firebaseAuth';
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -400,11 +401,8 @@ export async function handleManageLearningPlan(c: Context<{ Bindings: Env }>) {
       throw new APIError(`Invalid action: must be one of ${validActions.join(', ')}`, 400);
     }
 
-    // Verify Firebase config
-    const { firebaseConfig } = body;
-    if (!firebaseConfig?.projectId || !firebaseConfig?.accessToken) {
-      throw new APIError('Missing firebaseConfig with projectId and accessToken', 400);
-    }
+    // Get Firebase config from request or server-side credentials
+    const firebaseConfig = await getFirebaseConfig(c.env, body.firebaseConfig);
 
     console.log('[manage-learning-plan] Action:', { action, userId });
 

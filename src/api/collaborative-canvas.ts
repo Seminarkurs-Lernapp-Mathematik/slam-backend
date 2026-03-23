@@ -119,14 +119,55 @@ function validateResponse(data: any): CanvasResponse {
 // MAIN HANDLER
 // ============================================================================
 
+/**
+ * Parse request body - supports both JSON and multipart/form-data
+ */
+async function parseCanvasRequest(c: Context<{ Bindings: Env }>): Promise<CollaborativeCanvasRequest> {
+  const contentType = c.req.header('content-type') || '';
+
+  if (contentType.includes('multipart/form-data')) {
+    const formData = await c.req.parseBody();
+    const imageFile = formData['image'];
+    const question = formData['question'] as string;
+
+    if (!imageFile || typeof imageFile === 'string') {
+      throw new APIError('Missing required field: image (file upload)', 400);
+    }
+
+    // Convert File to base64
+    const arrayBuffer = await (imageFile as File).arrayBuffer();
+    const bytes = new Uint8Array(arrayBuffer);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    const imageBase64 = btoa(binary);
+
+    return {
+      imageBase64,
+      question: question || '',
+      gradeLevel: formData['gradeLevel'] as string | undefined,
+      courseType: formData['courseType'] as string | undefined,
+    };
+  }
+
+  // JSON body
+  const body = await c.req.json<Partial<CollaborativeCanvasRequest>>();
+  return {
+    imageBase64: body.imageBase64 || '',
+    question: body.question || '',
+    gradeLevel: body.gradeLevel,
+    courseType: body.courseType,
+  };
+}
+
 export async function handleCollaborativeCanvas(c: Context<{ Bindings: Env }>) {
   try {
-    const body = await c.req.json<Partial<CollaborativeCanvasRequest>>();
+    const { imageBase64, question, gradeLevel, courseType } = await parseCanvasRequest(c);
 
     // Validate required fields
-    const { imageBase64, question } = body;
     if (!imageBase64) {
-      throw new APIError('Missing required field: imageBase64', 400);
+      throw new APIError('Missing required field: imageBase64 or image file', 400);
     }
     if (!question || question.trim().length === 0) {
       throw new APIError('Missing required field: question', 400);
@@ -143,9 +184,6 @@ export async function handleCollaborativeCanvas(c: Context<{ Bindings: Env }>) {
     if (estimatedSize > MAX_SIZE) {
       throw new APIError(`Image too large: maximum 10MB allowed`, 400);
     }
-
-    const gradeLevel = body.gradeLevel;
-    const courseType = body.courseType;
 
     console.log('[collaborative-canvas] Request:', {
       questionLength: question.length,
@@ -189,6 +227,7 @@ export async function handleCollaborativeCanvas(c: Context<{ Bindings: Env }>) {
       // Fallback: return the raw text as answer
       return c.json({
         success: true,
+        text: responseText,
         answer: responseText,
         modelUsed: taskConfig.model,
         providerUsed: taskConfig.provider,
@@ -208,6 +247,7 @@ export async function handleCollaborativeCanvas(c: Context<{ Bindings: Env }>) {
 
     return c.json({
       success: true,
+      text: result.answer,
       ...result,
       modelUsed: taskConfig.model,
       providerUsed: taskConfig.provider,

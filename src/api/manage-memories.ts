@@ -12,6 +12,7 @@
 import type { Context } from 'hono';
 import type { Env } from '../index';
 import { APIError } from '../types';
+import { getFirebaseConfig } from '../utils/firebaseAuth';
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -88,8 +89,55 @@ async function getDueMemories(
   userId: string
 ): Promise<MemoryItem[]> {
   const now = new Date().toISOString();
-  
-  // Query for memories where nextReview <= now
+
+  // Use Firestore structured query to filter server-side
+  const queryUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:runQuery`;
+
+  const query = {
+    structuredQuery: {
+      from: [{ collectionId: 'memories' }],
+      where: {
+        fieldFilter: {
+          field: { fieldPath: 'nextReview' },
+          op: 'LESS_THAN_OR_EQUAL',
+          value: { timestampValue: now },
+        },
+      },
+      orderBy: [{ field: { fieldPath: 'nextReview' }, direction: 'ASCENDING' }],
+    },
+    parent: `projects/${projectId}/databases/(default)/documents/users/${userId}`,
+  };
+
+  const response = await fetch(queryUrl, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(query),
+  });
+
+  if (!response.ok) {
+    if (response.status === 404) return [];
+    // Fall back to fetching all memories if structured query fails
+    console.warn('[manage-memories] Structured query failed, falling back to full fetch');
+    return getDueMemoriesFallback(projectId, accessToken, userId, now);
+  }
+
+  const results: any[] = await response.json();
+
+  // Filter out empty results (Firestore returns [{readTime: ...}] when no matches)
+  return results
+    .filter((r: any) => r.document)
+    .map((r: any) => documentToMemory(r.document));
+}
+
+async function getDueMemoriesFallback(
+  projectId: string,
+  accessToken: string,
+  userId: string,
+  now: string
+): Promise<MemoryItem[]> {
   const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/users/${userId}/memories`;
 
   const response = await fetch(url, {
@@ -107,7 +155,7 @@ async function getDueMemories(
   return documents
     .map(documentToMemory)
     .filter((m: MemoryItem) => m.nextReview <= now)
-    .sort((a: MemoryItem, b: MemoryItem) => 
+    .sort((a: MemoryItem, b: MemoryItem) =>
       new Date(a.nextReview).getTime() - new Date(b.nextReview).getTime()
     );
 }
@@ -362,11 +410,8 @@ export async function handleManageMemories(c: Context<{ Bindings: Env }>) {
       throw new APIError(`Invalid action: must be one of ${validActions.join(', ')}`, 400);
     }
 
-    // Verify Firebase config
-    const { firebaseConfig } = body;
-    if (!firebaseConfig?.projectId || !firebaseConfig?.accessToken) {
-      throw new APIError('Missing firebaseConfig with projectId and accessToken', 400);
-    }
+    // Get Firebase config from request or server-side credentials
+    const firebaseConfig = await getFirebaseConfig(c.env, body.firebaseConfig);
 
     console.log('[manage-memories] Action:', { action, userId });
 

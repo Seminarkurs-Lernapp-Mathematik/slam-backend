@@ -165,14 +165,56 @@ function validateAndNormalizeTopics(data: any): AnalysisResult {
 // MAIN HANDLER
 // ============================================================================
 
+/**
+ * Parse request body - supports both JSON and multipart/form-data
+ */
+async function parseImageRequest(c: Context<{ Bindings: Env }>): Promise<AnalyzeImageRequest> {
+  const contentType = c.req.header('content-type') || '';
+
+  if (contentType.includes('multipart/form-data')) {
+    const formData = await c.req.parseBody();
+    const imageFile = formData['image'];
+
+    if (!imageFile || typeof imageFile === 'string') {
+      throw new APIError('Missing required field: image (file upload)', 400);
+    }
+
+    // Convert File to base64
+    const arrayBuffer = await (imageFile as File).arrayBuffer();
+    const bytes = new Uint8Array(arrayBuffer);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    const imageBase64 = btoa(binary);
+
+    // Accept both 'type' (frontend) and 'analysisType' (backend convention)
+    const analysisType = (formData['type'] as string) || (formData['analysisType'] as string) || 'topic-extraction';
+
+    return {
+      imageBase64,
+      analysisType: analysisType as AnalyzeImageRequest['analysisType'],
+      gradeLevel: formData['gradeLevel'] as string | undefined,
+    };
+  }
+
+  // JSON body
+  const body = await c.req.json<Partial<AnalyzeImageRequest & { type?: string }>>();
+  return {
+    imageBase64: body.imageBase64 || '',
+    // Accept both 'type' (frontend) and 'analysisType' (backend)
+    analysisType: (body.type || body.analysisType || 'topic-extraction') as AnalyzeImageRequest['analysisType'],
+    gradeLevel: body.gradeLevel,
+  };
+}
+
 export async function handleAnalyzeImage(c: Context<{ Bindings: Env }>) {
   try {
-    const body = await c.req.json<Partial<AnalyzeImageRequest>>();
+    const { imageBase64, analysisType, gradeLevel } = await parseImageRequest(c);
 
     // Validate required fields
-    const { imageBase64 } = body;
     if (!imageBase64) {
-      throw new APIError('Missing required field: imageBase64', 400);
+      throw new APIError('Missing required field: imageBase64 or image file', 400);
     }
 
     // Validate image data format
@@ -186,9 +228,6 @@ export async function handleAnalyzeImage(c: Context<{ Bindings: Env }>) {
     if (estimatedSize > MAX_SIZE) {
       throw new APIError(`Image too large: maximum 10MB allowed`, 400);
     }
-
-    const analysisType = body.analysisType || 'topic-extraction';
-    const gradeLevel = body.gradeLevel;
 
     console.log('[analyze-image] Request:', {
       analysisType,
@@ -206,7 +245,7 @@ export async function handleAnalyzeImage(c: Context<{ Bindings: Env }>) {
     // PHASE 2: Build prompt and call AI
     // =======================================================================
 
-    const prompt = buildPrompt(analysisType, gradeLevel);
+    const prompt = buildPrompt(analysisType || 'topic-extraction', gradeLevel);
 
     const responseText = await callVisionAI({
       provider: taskConfig.provider,
@@ -242,9 +281,19 @@ export async function handleAnalyzeImage(c: Context<{ Bindings: Env }>) {
     // PHASE 4: Return response
     // =======================================================================
 
+    // Return both structured topics and flat string list for frontend compatibility
+    // Frontend expects: topics as List<String>, summary as String
+    const topicStrings = result.topics.map(
+      (t) => `${t.leitidee} > ${t.thema} > ${t.unterthema}`
+    );
+
     return c.json({
       success: true,
-      ...result,
+      topics: topicStrings,
+      structuredTopics: result.topics,
+      summary: result.summary,
+      suggestedQuestions: result.suggestedQuestions,
+      difficulty: result.difficulty,
       modelUsed: taskConfig.model,
       providerUsed: taskConfig.provider,
     });

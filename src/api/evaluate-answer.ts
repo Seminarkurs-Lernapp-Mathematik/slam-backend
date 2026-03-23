@@ -137,6 +137,82 @@ function normalizeExpression(expr: string | number | null | undefined): string {
 }
 
 /**
+ * Safe recursive descent math expression parser.
+ * Supports: +, -, *, /, ** (power), parentheses, sqrt(), numeric literals, pi, e.
+ * Does NOT use Function() or eval().
+ */
+function safeEvaluate(expression: string): number {
+  let pos = 0;
+  const expr = expression.replace(/\s+/g, '');
+
+  function parseExpression(): number {
+    let result = parseTerm();
+    while (pos < expr.length) {
+      if (expr[pos] === '+') { pos++; result += parseTerm(); }
+      else if (expr[pos] === '-') { pos++; result -= parseTerm(); }
+      else break;
+    }
+    return result;
+  }
+
+  function parseTerm(): number {
+    let result = parsePower();
+    while (pos < expr.length) {
+      if (expr[pos] === '*' && expr[pos + 1] !== '*') { pos++; result *= parsePower(); }
+      else if (expr[pos] === '/') { pos++; result /= parsePower(); }
+      else break;
+    }
+    return result;
+  }
+
+  function parsePower(): number {
+    let result = parseUnary();
+    if (pos < expr.length - 1 && expr[pos] === '*' && expr[pos + 1] === '*') {
+      pos += 2;
+      result = Math.pow(result, parsePower()); // right-associative
+    }
+    return result;
+  }
+
+  function parseUnary(): number {
+    if (expr[pos] === '-') { pos++; return -parseAtom(); }
+    if (expr[pos] === '+') { pos++; return parseAtom(); }
+    return parseAtom();
+  }
+
+  function parseAtom(): number {
+    // Parenthesized expression
+    if (expr[pos] === '(') {
+      pos++; // skip '('
+      const result = parseExpression();
+      if (expr[pos] === ')') pos++; // skip ')'
+      return result;
+    }
+
+    // sqrt(...)
+    if (expr.startsWith('sqrt(', pos)) {
+      pos += 5; // skip 'sqrt('
+      const result = parseExpression();
+      if (expr[pos] === ')') pos++; // skip ')'
+      return Math.sqrt(result);
+    }
+
+    // Number literal (including decimals and scientific notation)
+    const numMatch = expr.slice(pos).match(/^(\d+\.?\d*(?:e[+-]?\d+)?)/i);
+    if (numMatch) {
+      pos += numMatch[0].length;
+      return parseFloat(numMatch[0]);
+    }
+
+    throw new Error('Unexpected character in expression');
+  }
+
+  const result = parseExpression();
+  if (pos < expr.length) throw new Error('Unexpected trailing characters');
+  return result;
+}
+
+/**
  * Evaluate a mathematical expression to a numeric value
  * Returns null if expression cannot be evaluated numerically
  */
@@ -147,8 +223,7 @@ function evaluateToNumber(expr: string | number | null | undefined): number | nu
     // Handle common mathematical constants
     let evalExpr = normalized
       .replace(/pi/g, String(Math.PI))
-      .replace(/e(?![a-z])/g, String(Math.E))
-      .replace(/sqrt\(([^)]+)\)/g, (_, inner) => `Math.sqrt(${inner})`)
+      .replace(/e(?![a-z0-9])/g, String(Math.E))
       .replace(/\^/g, '**');
 
     // Handle fractions like "1/2"
@@ -157,13 +232,14 @@ function evaluateToNumber(expr: string | number | null | undefined): number | nu
       return parseFloat(num) / parseFloat(denom);
     }
 
-    // Safe evaluation for simple numeric expressions
-    if (/^[0-9+\-*/().eE\s]+$/.test(evalExpr) || /Math\.\w+/.test(evalExpr)) {
-      // Use Function constructor for safe evaluation
-      const result = new Function(`return ${evalExpr}`)();
-      if (typeof result === 'number' && !isNaN(result)) {
+    // Try safe evaluation for numeric expressions
+    try {
+      const result = safeEvaluate(evalExpr);
+      if (typeof result === 'number' && !isNaN(result) && isFinite(result)) {
         return result;
       }
+    } catch {
+      // Fall through to direct parsing
     }
 
     // Try direct parsing

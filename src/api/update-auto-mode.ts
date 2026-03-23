@@ -219,9 +219,14 @@ export async function handleUpdateAutoMode(c: Context<{ Bindings: Env }>) {
     if (!userId) {
       throw new APIError('Missing required field: userId', 400);
     }
-    if (!currentSettings) {
-      throw new APIError('Missing required field: currentSettings', 400);
-    }
+
+    // Default settings if not provided (frontend may not send this field)
+    const settings: AutoModeSettings = currentSettings || {
+      detailLevel: 50,
+      temperature: 0.7,
+      helpfulness: 50,
+      targetDifficulty: 5,
+    };
 
     const performance = recentPerformance || [];
 
@@ -241,7 +246,7 @@ export async function handleUpdateAutoMode(c: Context<{ Bindings: Env }>) {
     if (performance.length === 0) {
       return c.json({
         success: true,
-        currentAssessment: currentSettings,
+        currentAssessment: settings,
         reasoning: 'Noch nicht genügend Daten für eine Analyse. Standard-Einstellungen beibehalten.',
         trend: 'stable',
         recommendations: ['Bearbeite einige Fragen, um personalisierte Einstellungen zu erhalten'],
@@ -256,7 +261,7 @@ export async function handleUpdateAutoMode(c: Context<{ Bindings: Env }>) {
     const taskConfig = await getTaskModelConfig('updateAutoMode');
     console.log(`[Model Router] Using ${taskConfig.model} for updateAutoMode task`);
 
-    const prompt = buildPrompt(currentSettings, performance, metrics);
+    const prompt = buildPrompt(settings, performance, metrics);
 
     // =======================================================================
     // PHASE 3: Call AI for assessment

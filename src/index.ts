@@ -53,7 +53,7 @@ app.use('*', cors({
       return origin;
     }
 
-    return allowedOrigins.includes(origin) ? origin : origin;
+    return allowedOrigins.includes(origin) ? origin : allowedOrigins[0];
   },
   allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowHeaders: ['Content-Type', 'Authorization', 'X-API-Key'],
@@ -129,7 +129,7 @@ app.onError((err, c) => {
   return c.json({
     success: false,
     error: 'Internal Server Error',
-    message: err.message,
+    message: 'An unexpected error occurred. Please try again later.',
   }, 500);
 });
 

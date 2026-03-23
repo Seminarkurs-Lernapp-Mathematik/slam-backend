@@ -71,8 +71,9 @@ export async function callAI({
       });
 
       if (!response.ok) {
-        const error = await response.json().catch(() => ({ error: response.statusText }));
-        throw new Error(`Claude API error (${response.status}): ${JSON.stringify(error)}`);
+        const errorBody: any = await response.json().catch(() => null);
+        const safeMessage = errorBody?.error?.message || response.statusText;
+        throw new Error(`Claude API error (${response.status}): ${safeMessage}`);
       }
 
       const data: any = await response.json();
@@ -98,12 +99,11 @@ export async function callAI({
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
         let errorMessage = `Gemini API error (${response.status})`;
         try {
-          const errorJson = JSON.parse(errorText);
-          errorMessage = errorJson.error?.message || errorMessage;
-        } catch { errorMessage = errorText || errorMessage; }
+          const errorJson: any = await response.json();
+          errorMessage = errorJson?.error?.message || errorMessage;
+        } catch { /* use default message */ }
         throw new Error(errorMessage);
       }
 
@@ -358,8 +358,9 @@ export async function callVisionAI({
       });
 
       if (!response.ok) {
-        const error = await response.json().catch(() => ({ error: response.statusText }));
-        throw new Error(`Claude Vision API error (${response.status}): ${JSON.stringify(error)}`);
+        const errorBody: any = await response.json().catch(() => null);
+        const safeMessage = errorBody?.error?.message || response.statusText;
+        throw new Error(`Claude Vision API error (${response.status}): ${safeMessage}`);
       }
 
       const data: any = await response.json();
@@ -388,12 +389,11 @@ export async function callVisionAI({
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
         let errorMessage = `Gemini Vision API error (${response.status})`;
         try {
-          const errorJson = JSON.parse(errorText);
-          errorMessage = errorJson.error?.message || errorMessage;
-        } catch { errorMessage = errorText || errorMessage; }
+          const errorJson: any = await response.json();
+          errorMessage = errorJson?.error?.message || errorMessage;
+        } catch { /* use default message */ }
         throw new Error(errorMessage);
       }
 
