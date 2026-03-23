@@ -12,6 +12,7 @@
 import type { Context } from 'hono';
 import type { Env } from '../index';
 import { APIError } from '../types';
+import { getFirebaseConfig } from '../utils/firebaseAuth';
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -157,18 +158,16 @@ export async function handlePurchase(c: Context<{ Bindings: Env }>) {
 
     console.log('[purchase] Request:', { userId, itemType, itemId, cost });
 
-    // Verify Firebase config
-    if (!firebaseConfig?.projectId || !firebaseConfig?.accessToken) {
-      throw new APIError('Missing firebaseConfig with projectId and accessToken', 400);
-    }
+    // Get Firebase config from request or server-side credentials
+    const fbConfig = await getFirebaseConfig(c.env, firebaseConfig);
 
     // =======================================================================
     // PHASE 1: Fetch current user stats
     // =======================================================================
 
     const userStats = await getUserStats(
-      firebaseConfig.projectId,
-      firebaseConfig.accessToken,
+      fbConfig.projectId,
+      fbConfig.accessToken,
       userId
     );
 
@@ -216,8 +215,8 @@ export async function handlePurchase(c: Context<{ Bindings: Env }>) {
     const newCoinBalance = userStats.coins - cost;
 
     await updateUserAfterPurchase(
-      firebaseConfig.projectId,
-      firebaseConfig.accessToken,
+      fbConfig.projectId,
+      fbConfig.accessToken,
       userId,
       itemType,
       itemId,

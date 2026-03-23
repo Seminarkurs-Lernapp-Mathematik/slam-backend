@@ -149,9 +149,12 @@ export async function handleGenerateGeogebra(c: Context<{ Bindings: Env }>) {
   try {
     const body = await c.req.json<Partial<GenerateGeogebraRequest>>();
 
-    // Need at least one of: questionText, topic, userPrompt
-    if (!body.questionText && !body.topic && !body.userPrompt) {
-      throw new APIError('Missing context: provide questionText, topic, or userPrompt', 400);
+    // Accept both 'question' (frontend) and 'questionText' (backend convention)
+    const questionText = body.questionText || (body as any).question;
+
+    // Need at least one of: questionText/question, topic, userPrompt
+    if (!questionText && !body.topic && !body.userPrompt) {
+      throw new APIError('Missing context: provide question, topic, or userPrompt', 400);
     }
 
     const gradeLevel = body.gradeLevel;
@@ -174,7 +177,7 @@ export async function handleGenerateGeogebra(c: Context<{ Bindings: Env }>) {
     // =======================================================================
 
     const prompt = buildPrompt({
-      questionText: body.questionText,
+      questionText,
       topic: body.topic,
       userPrompt: body.userPrompt,
       gradeLevel,
@@ -182,7 +185,6 @@ export async function handleGenerateGeogebra(c: Context<{ Bindings: Env }>) {
 
     const responseText = await callAI({
       provider: taskConfig.provider,
-      apiKey: '', // Will be fetched from env by callAI
       model: taskConfig.model,
       prompt,
       temperature: taskConfig.temperature,

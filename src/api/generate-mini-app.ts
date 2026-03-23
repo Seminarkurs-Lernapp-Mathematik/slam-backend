@@ -110,25 +110,30 @@ function validateAndSanitizeApp(appData: any): GeneratedApp {
     throw new APIError('Invalid response: missing html field', 500);
   }
 
-  // Basic security checks
-  const html = appData.html;
-  const forbiddenPatterns = [
-    /<script\s+src/i,  // External scripts
-    /fetch\s*\(/i,      // Network requests
-    /XMLHttpRequest/i, // AJAX
-    /websocket/i,      // WebSockets
-    /localStorage/i,   // Storage
-    /document\.cookie/i, // Cookies
+  // Security: sanitize forbidden patterns from the generated HTML
+  let html: string = appData.html;
+  const forbiddenPatterns: Array<{ pattern: RegExp; replacement: string }> = [
+    { pattern: /<script\s+src[^>]*>[\s\S]*?<\/script>/gi, replacement: '<!-- external script removed -->' },
+    { pattern: /\bfetch\s*\(/gi, replacement: '/* fetch blocked */(' },
+    { pattern: /XMLHttpRequest/gi, replacement: '/* XHR blocked */' },
+    { pattern: /\bWebSocket\b/gi, replacement: '/* WebSocket blocked */' },
+    { pattern: /localStorage/gi, replacement: '/* localStorage blocked */' },
+    { pattern: /sessionStorage/gi, replacement: '/* sessionStorage blocked */' },
+    { pattern: /document\.cookie/gi, replacement: '/* cookie access blocked */' },
+    { pattern: /\beval\s*\(/gi, replacement: '/* eval blocked */(' },
+    { pattern: /window\.open\s*\(/gi, replacement: '/* window.open blocked */(' },
+    { pattern: /window\.location/gi, replacement: '/* redirect blocked */' },
   ];
 
-  for (const pattern of forbiddenPatterns) {
+  for (const { pattern, replacement } of forbiddenPatterns) {
     if (pattern.test(html)) {
-      console.warn('[generate-mini-app] Potentially unsafe code detected, sanitizing');
+      console.warn(`[generate-mini-app] Sanitizing unsafe pattern: ${pattern.source}`);
+      html = html.replace(pattern, replacement);
     }
   }
 
   return {
-    html: appData.html,
+    html,
     css: appData.css || '',
     javascript: appData.javascript || '',
     title: appData.title || 'Mini App',
@@ -172,7 +177,6 @@ export async function handleGenerateMiniApp(c: Context<{ Bindings: Env }>) {
 
     const responseText = await callAI({
       provider: taskConfig.provider,
-      apiKey: '', // Will be fetched from env by callAI
       model: taskConfig.model,
       prompt,
       temperature: taskConfig.temperature,

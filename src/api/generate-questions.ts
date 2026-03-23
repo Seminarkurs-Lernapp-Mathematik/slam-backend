@@ -14,6 +14,7 @@ import type { Topic, UserContext, QuestionSession, Question, QuestionOption, Que
 import { APIError } from '../types';
 import { extractAndParseJson } from '../utils/repairJson';
 import { callAI, getTaskModelConfig } from '../utils/callAI';
+import { getFirebaseConfig } from '../utils/firebaseAuth';
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -410,8 +411,6 @@ export async function handleGenerateQuestions(c: Context<{ Bindings: Env }>) {
     const useCache = body.useCache !== false;
     const forceRegenerate = body.forceRegenerate || false;
     const learningPlanItemId = body.learningPlanItemId;
-    const firebaseConfig = body.firebaseConfig;
-
     console.log('[generate-questions] Request:', {
       userId,
       afbLevel,
@@ -419,19 +418,27 @@ export async function handleGenerateQuestions(c: Context<{ Bindings: Env }>) {
       topicCount: topics.length,
     });
 
+    // Get Firebase config from request or server-side credentials (for caching)
+    let fbConfig: { projectId: string; accessToken: string } | null = null;
+    try {
+      fbConfig = await getFirebaseConfig(c.env, body.firebaseConfig);
+    } catch {
+      console.warn('[generate-questions] Firebase config not available, caching disabled');
+    }
+
     // ========================================================================
     // PHASE 1: Firestore Cache Lookup
     // ========================================================================
 
     const cacheKey = generateCacheKey(topics, afbLevel, 5);
 
-    if (useCache && !forceRegenerate && firebaseConfig) {
+    if (useCache && !forceRegenerate && fbConfig) {
       try {
-        const firebaseUrl = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/(default)/documents/question_cache/${cacheKey}`;
+        const firebaseUrl = `https://firestore.googleapis.com/v1/projects/${fbConfig.projectId}/databases/(default)/documents/question_cache/${cacheKey}`;
 
         const cacheResponse = await fetch(firebaseUrl, {
           headers: {
-            Authorization: `Bearer ${firebaseConfig.accessToken}`,
+            Authorization: `Bearer ${fbConfig.accessToken}`,
           },
         });
 
@@ -492,7 +499,6 @@ export async function handleGenerateQuestions(c: Context<{ Bindings: Env }>) {
     // Use shared callAI with task configuration from models.json
     const responseText = await callAI({
       provider: taskConfig.provider,
-      apiKey: '', // Will be fetched from env by callAI
       model: taskConfig.model,
       prompt,
       temperature: taskConfig.temperature,
@@ -528,9 +534,9 @@ export async function handleGenerateQuestions(c: Context<{ Bindings: Env }>) {
     // PHASE 4: Store in Firestore Cache
     // ========================================================================
 
-    if (useCache && firebaseConfig && questionsData.questions?.length > 0) {
+    if (useCache && fbConfig && questionsData.questions?.length > 0) {
       try {
-        const firebaseUrl = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/(default)/documents/question_cache/${cacheKey}`;
+        const firebaseUrl = `https://firestore.googleapis.com/v1/projects/${fbConfig.projectId}/databases/(default)/documents/question_cache/${cacheKey}`;
 
         const cacheDocument = {
           fields: {
@@ -554,7 +560,7 @@ export async function handleGenerateQuestions(c: Context<{ Bindings: Env }>) {
         await fetch(firebaseUrl, {
           method: 'PATCH',
           headers: {
-            Authorization: `Bearer ${firebaseConfig.accessToken}`,
+            Authorization: `Bearer ${fbConfig.accessToken}`,
             'Content-Type': 'application/json',
           },
           body: JSON.stringify(cacheDocument),

@@ -116,7 +116,6 @@ export async function handleCustomHint(c: Context<{ Bindings: Env }>) {
 
     const responseText = await callAI({
       provider: taskConfig.provider,
-      apiKey: '', // Will be fetched from env by callAI
       model: taskConfig.model,
       prompt,
       temperature: taskConfig.temperature,
