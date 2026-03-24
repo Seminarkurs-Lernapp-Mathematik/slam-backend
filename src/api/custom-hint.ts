@@ -2,12 +2,8 @@
  * Custom Hint Endpoint
  * Generates personalized, progressive hints for students using AI
  *
- * Features:
- * - Backend-managed AI configuration (models.json)
- * - Progressive hint specificity based on hintsUsed count
- * - Misconception-aware hints when userAnswer is provided
- * - German language hints for math context
- * - Never gives away the answer directly
+ * Supports multi-turn chat mode via the optional `chatHistory` field,
+ * enabling follow-up questions in the "Wo hängts?" chat popover.
  */
 
 import type { Context } from 'hono';
@@ -20,6 +16,11 @@ import { callAI, getTaskModelConfig } from '../utils/callAI';
 // TYPE DEFINITIONS
 // ============================================================================
 
+interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
 interface CustomHintRequest {
   question: string;
   userAnswer?: string;
@@ -27,6 +28,8 @@ interface CustomHintRequest {
   solution?: string;
   topic?: string;
   difficulty?: number;
+  /** Optional prior conversation turns for multi-turn chat mode */
+  chatHistory?: ChatMessage[];
 }
 
 // ============================================================================
@@ -40,6 +43,7 @@ function buildHintPrompt(
   solution?: string,
   topic?: string,
   difficulty?: number,
+  chatHistory?: ChatMessage[],
 ): string {
   const hintLevel = hintsUsed || 0;
 
@@ -51,20 +55,24 @@ function buildHintPrompt(
       : 'STUFE 3 (Detaillierter Hinweis): Gib einen sehr detaillierten Hinweis. Führe den Schüler fast bis zur Lösung, zeige den Lösungsweg bis auf den letzten Schritt. Verrate aber NICHT die endgültige Antwort.';
 
   const userAnswerContext = userAnswer
-    ? `\nDer Schüler hat folgende (falsche) Antwort gegeben: "${userAnswer}"\nGehe auf den spezifischen Fehler oder das Missverständnis ein und erkläre, warum dieser Ansatz nicht funktioniert.`
+    ? `\nDer Schüler hat folgende Frage/Antwort gegeben: "${userAnswer}"\nGehe darauf gezielt ein.`
     : '';
 
   const solutionContext = solution
     ? `\nDie korrekte Lösung lautet: "${solution}" (NIEMALS direkt verraten!)`
     : '';
 
-  const topicContext = topic
-    ? `\nThemengebiet: ${topic}`
-    : '';
+  const topicContext = topic ? `\nThemengebiet: ${topic}` : '';
+  const difficultyContext = difficulty ? `\nSchwierigkeitsgrad: ${difficulty}/10` : '';
 
-  const difficultyContext = difficulty
-    ? `\nSchwierigkeitsgrad: ${difficulty}/10`
-    : '';
+  // Build conversation history section for multi-turn chat
+  let conversationContext = '';
+  if (chatHistory && chatHistory.length > 0) {
+    const turns = chatHistory
+      .map((m) => `${m.role === 'user' ? 'Schüler' : 'Tutor'}: ${m.content}`)
+      .join('\n');
+    conversationContext = `\n\nBISHERIGES GESPRÄCH:\n${turns}\n\nFahre das Gespräch fort und beantworte die neueste Frage des Schülers.`;
+  }
 
   return `Du bist ein erfahrener und einfühlsamer Mathematik-Tutor. Ein Schüler braucht Hilfe bei folgender Aufgabe.
 
@@ -74,7 +82,7 @@ ${topicContext}${difficultyContext}${solutionContext}${userAnswerContext}
 HINWEIS-LEVEL:
 ${hintLevelDescription}
 
-Bisherige Hinweise erhalten: ${hintLevel}
+Bisherige Hinweise erhalten: ${hintLevel}${conversationContext}
 
 REGELN:
 - Antworte auf Deutsch
@@ -82,13 +90,13 @@ REGELN:
 - Sei ermutigend und unterstützend
 - Gib NIEMALS die vollständige Lösung oder Antwort direkt preis
 - Passe die Detailtiefe an die Hinweis-Stufe an
-- Wenn der Schüler eine falsche Antwort gegeben hat, gehe auf seinen spezifischen Fehler ein
-- Halte den Hinweis kurz und prägnant (2-4 Sätze)
+- Wenn der Schüler eine Folgefrage stellt, beantworte sie gezielt
+- Halte die Antwort kurz und prägnant (2-5 Sätze)
 
 WICHTIG: Antworte NUR mit einem JSON-Objekt (kein zusätzlicher Text, kein Markdown-Code-Block).
 
 {
-  "hint": "Dein Hinweis hier..."
+  "hint": "Deine Antwort hier..."
 }`;
 }
 
@@ -100,19 +108,27 @@ export async function handleCustomHint(c: Context<{ Bindings: Env }>) {
   try {
     const body = await c.req.json<CustomHintRequest>();
 
-    // Validate required fields
-    const { question, userAnswer, hintsUsed, solution, topic, difficulty } = body;
+    const { question, userAnswer, hintsUsed, solution, topic, difficulty, chatHistory } = body;
     if (!question) {
       throw new APIError('Missing required field: question', 400);
     }
 
-    console.log(`[custom-hint] Request: hintsUsed=${hintsUsed || 0}, hasUserAnswer=${!!userAnswer}`);
+    const isChatMode = chatHistory && chatHistory.length > 0;
+    console.log(
+      `[custom-hint] Request: hintsUsed=${hintsUsed || 0}, hasUserAnswer=${!!userAnswer}, chatMode=${isChatMode}, turns=${chatHistory?.length ?? 0}`,
+    );
 
-    // Get task configuration from models.json
     const taskConfig = await getTaskModelConfig('customHint');
 
-    // Build prompt and call AI
-    const prompt = buildHintPrompt(question, userAnswer, hintsUsed, solution, topic, difficulty);
+    const prompt = buildHintPrompt(
+      question,
+      userAnswer,
+      hintsUsed,
+      solution,
+      topic,
+      difficulty,
+      chatHistory,
+    );
 
     const responseText = await callAI({
       provider: taskConfig.provider,
@@ -124,7 +140,6 @@ export async function handleCustomHint(c: Context<{ Bindings: Env }>) {
       env: c.env,
     });
 
-    // Parse the AI response
     let hint = '';
 
     try {
@@ -136,21 +151,14 @@ export async function handleCustomHint(c: Context<{ Bindings: Env }>) {
         throw new Error('No JSON object found in response');
       }
     } catch (parseError) {
-      // Fallback: use the raw response text as the hint
       console.warn('[custom-hint] JSON parse failed, using raw response');
-
-      // Clean up the response: remove markdown formatting if present
       hint = responseText
         .replace(/```json\s*/g, '')
         .replace(/```\s*/g, '')
         .replace(/^\s*\{[\s\S]*"hint"\s*:\s*"/, '')
         .replace(/"\s*\}\s*$/, '')
         .trim();
-
-      // If still empty, use the full response
-      if (!hint) {
-        hint = responseText.trim();
-      }
+      if (!hint) hint = responseText.trim();
     }
 
     if (!hint) {
@@ -159,10 +167,7 @@ export async function handleCustomHint(c: Context<{ Bindings: Env }>) {
 
     console.log(`[custom-hint] Success: hint length=${hint.length} chars`);
 
-    return c.json({
-      success: true,
-      hint,
-    });
+    return c.json({ success: true, hint });
   } catch (error) {
     console.error('[custom-hint] Error:', error);
 
@@ -176,7 +181,7 @@ export async function handleCustomHint(c: Context<{ Bindings: Env }>) {
         error: 'Internal server error',
         message: error instanceof Error ? error.message : 'Unknown error',
       },
-      500 as any
+      500 as any,
     );
   }
 }
