@@ -16,93 +16,93 @@
   "tasks": {
     "generateQuestions": {
       "description": "Generate math questions for students",
-      "provider": "claude",
-      "model": "claude-sonnet-4-6",
+      "provider": "gemini",
+      "model": "gemini-flash-latest",
       "temperature": 0.7,
-      "timeout": 60000,
-      "maxTokens": 8000,
-      "systemPrompt": "Du bist ein erfahrener Mathematiklehrer für deutsche Gymnasien. Du erstellst hochwertige, didaktisch durchdachte Mathematikaufgaben für Schüler. Du kennst die Anforderungsbereiche (AFB) I, II und III des deutschen Bildungssystems. Du nutzt LaTeX für mathematische Formeln. Du antwortest immer auf Deutsch."
+      "timeout": 40000,
+      "maxTokens": 6000,
+      "systemPrompt": "Du bist ein Mathematiklehrer für deutsche Gymnasien. Erstelle didaktisch hochwertige Aufgaben (AFB I–III) mit LaTeX-Formeln. Antworte nur auf Deutsch und ausschließlich im geforderten JSON-Format."
     },
     "evaluateAnswer": {
       "description": "Evaluate student answers and provide feedback",
       "provider": "gemini",
       "model": "gemini-flash-latest",
-      "temperature": 0.5,
-      "timeout": 45000,
-      "maxTokens": 6000,
-      "systemPrompt": "Du bist ein geduldiger Mathematiklehrer, der Schülerantworten fair und konstruktiv bewertet. Du erkennst häufige Fehler und Missverständnisse. Du gibst präzises, ermutigendes Feedback. Du nutzt LaTeX für mathematische Formeln. Du antwortest immer auf Deutsch."
+      "temperature": 0.4,
+      "timeout": 30000,
+      "maxTokens": 2000,
+      "systemPrompt": "Du bist ein Mathematiklehrer und bewertest Schülerantworten fair und konstruktiv. Gib präzises, ermutigendes Feedback mit LaTeX-Formeln. Antworte auf Deutsch im geforderten JSON-Format."
     },
     "customHint": {
       "description": "Generate personalized hints for students",
       "provider": "gemini",
       "model": "gemini-flash-latest",
       "temperature": 0.6,
-      "timeout": 30000,
-      "maxTokens": 4000,
-      "systemPrompt": "Du bist ein einfühlsamer Mathematiklehrer, der gezielte Hinweise gibt, ohne die Lösung zu verraten. Deine Hinweise sind progressiv: Der erste Hinweis ist sanft, der zweite spezifischer, der dritte fast eine vollständige Lösung. Du antwortest immer auf Deutsch."
+      "timeout": 25000,
+      "maxTokens": 1500,
+      "systemPrompt": "Du bist ein Mathematiklehrer und gibst gezielte Hilfestellungen ohne die Lösung zu verraten. Deine Hinweise sind progressiv hilfreich. Antworte auf Deutsch."
     },
     "generateMiniApp": {
       "description": "Generate interactive mini applications",
       "provider": "claude",
-      "model": "claude-sonnet-4-6",
+      "model": "claude-haiku-4-5-20251001",
       "temperature": 0.7,
-      "timeout": 60000,
-      "maxTokens": 8000,
-      "systemPrompt": "Du bist ein erfahrener Webentwickler und Mathematiklehrer. Du erstellst interaktive HTML/JavaScript-Mini-Apps zum Lernen von Mathematik. Deine Apps sind selbst-contained, modern und funktionieren ohne externe Bibliotheken. Du nutzt LaTeX für mathematische Formeln. Du antwortest immer auf Deutsch."
+      "timeout": 45000,
+      "maxTokens": 6000,
+      "systemPrompt": "Du bist ein Webentwickler und erstellst interaktive HTML/JS-Mini-Apps für Mathe-Lernen. Apps sind self-contained, nutzen kein eval(), kein localStorage, keine externen APIs. Antworte nur mit JSON im exakt geforderten Format."
     },
     "generateGeogebra": {
       "description": "Generate GeoGebra applets",
-      "provider": "claude",
-      "model": "claude-sonnet-4-6",
-      "temperature": 0.6,
-      "timeout": 60000,
-      "maxTokens": 6000,
-      "systemPrompt": "Du bist ein GeoGebra-Experte und Mathematiklehrer. Du erstellt GeoGebra-Applets, die mathematische Konzepte visualisieren. Du kennst die GeoGebra-Scripting-Syntax und erstellst interaktive, lehrreiche Applets. Du antwortest immer auf Deutsch."
+      "provider": "gemini",
+      "model": "gemini-flash-latest",
+      "temperature": 0.5,
+      "timeout": 30000,
+      "maxTokens": 2000,
+      "systemPrompt": "Du bist ein GeoGebra-Experte. Erstelle exakte GeoGebra-Befehle zur mathematischen Visualisierung. Antworte nur mit JSON im exakt geforderten Format."
     },
     "analyzeImage": {
       "description": "Analyze uploaded images for math problems",
       "provider": "gemini",
       "model": "gemini-flash-lite-latest",
       "temperature": 0.5,
-      "timeout": 45000,
-      "maxTokens": 6000,
-      "systemPrompt": "Du bist ein Mathematiklehrer, der Bilder von mathematischen Aufgaben analysiert. Du erkennst Aufgabentypen, Schwierigkeitsgrade und relevante Themen. Du schlägst passende Lerninhalte vor. Du antwortest immer auf Deutsch."
+      "timeout": 30000,
+      "maxTokens": 2000,
+      "systemPrompt": "Du analysierst Bilder mathematischer Aufgaben, erkennst Typen und Schwierigkeitsgrade. Antworte auf Deutsch im geforderten JSON-Format."
     },
     "updateAutoMode": {
       "description": "Adjust AI difficulty based on performance",
       "provider": "gemini",
       "model": "gemini-flash-latest",
       "temperature": 0.4,
-      "timeout": 30000,
-      "maxTokens": 4000,
-      "systemPrompt": "Du bist ein adaptives Lernsystem, das den Schwierigkeitsgrad an die Leistung von Schülern anpasst. Du analysierst Lernfortschritte und passt Detailgrad, Hilfestellung und Komplexität an. Du antwortest immer auf Deutsch."
+      "timeout": 20000,
+      "maxTokens": 1000,
+      "systemPrompt": "Du passt Schwierigkeitsgrad und Hilfestellung für adaptives Lernen an. Antworte nur mit JSON."
     },
     "manageMemories": {
       "description": "Manage student learning memories",
       "provider": "gemini",
       "model": "gemini-flash-latest",
-      "temperature": 0.5,
-      "timeout": 30000,
-      "maxTokens": 4000,
-      "systemPrompt": "Du bist ein Spaced-Repetition-System für mathematisches Lernen. Du analysierst, welche Themen ein Schüler wiederholen sollte, basierend auf seinen Fehlern und dem Zeitablauf. Du antwortest immer auf Deutsch."
+      "temperature": 0.4,
+      "timeout": 20000,
+      "maxTokens": 1500,
+      "systemPrompt": "Du verwaltest Spaced-Repetition-Daten für mathematisches Lernen. Antworte nur mit JSON."
     },
     "manageLearningPlan": {
       "description": "Generate and update learning plans",
       "provider": "gemini",
       "model": "gemini-flash-latest",
       "temperature": 0.6,
-      "timeout": 45000,
-      "maxTokens": 6000,
-      "systemPrompt": "Du bist ein erfahrener Mathematiklehrer, der personalisierte Lernpläne erstellt. Du strukturierst Themen logisch, berücksichtigt Vorkenntnisse und schlägt realistische Zeitpläne vor. Du antwortest immer auf Deutsch."
+      "timeout": 30000,
+      "maxTokens": 3000,
+      "systemPrompt": "Du erstellst personalisierte Mathematik-Lernpläne mit logischer Themenstruktur und realistischen Zeitplänen. Antworte auf Deutsch im geforderten JSON-Format."
     },
     "collaborativeCanvas": {
       "description": "Collaborative canvas AI assistance",
       "provider": "gemini",
-      "model": "gemini-3.1-pro-preview",
+      "model": "gemini-flash-latest",
       "temperature": 0.6,
-      "timeout": 45000,
-      "maxTokens": 6000,
-      "systemPrompt": "Du bist ein KI-Assistent für kollaboratives Mathematik-Lernen auf einem digitalen Whiteboard. Du analysiert Lösungsansätze, gibst Hinweise und erklärst mathematische Konzepte. Du nutzt LaTeX für Formeln. Du antwortest immer auf Deutsch."
+      "timeout": 30000,
+      "maxTokens": 2000,
+      "systemPrompt": "Du bist ein KI-Assistent für kollaboratives Mathe-Lernen auf einem digitalen Whiteboard. Nutze LaTeX für Formeln. Antworte auf Deutsch."
     }
   },
   "features": {
