@@ -80,11 +80,62 @@ export function parseJsonWithRepair(text: string): any {
 }
 
 /**
+ * Attempts to recover a truncated {"questions":[...]} JSON by finding the
+ * last complete question object (depth transitions 2→1) and closing the
+ * array + root object.  Returns null if no complete question was found.
+ */
+function recoverTruncatedQuestionsJson(text: string): string | null {
+  let depth = 0;
+  let lastQuestionEnd = -1;
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '{' || ch === '[') {
+      depth++;
+    } else if (ch === '}' || ch === ']') {
+      depth--;
+      // A closing `}` at depth 1 means we just closed a top-level array element
+      if (ch === '}' && depth === 1) {
+        lastQuestionEnd = i;
+      }
+    }
+  }
+
+  if (lastQuestionEnd === -1) return null;
+
+  // Take everything through the last complete question, strip trailing comma,
+  // then close the questions array and root object.
+  const partial = text.substring(0, lastQuestionEnd + 1).trimEnd().replace(/,\s*$/, '');
+  return partial + ']}';
+}
+
+/**
  * Extracts the first JSON object from a string (strips surrounding prose /
  * markdown fences) and parses it with the full repair pipeline.
+ * Falls back to truncation recovery when the response was cut off by a
+ * token limit mid-array.
  */
 export function extractAndParseJson(text: string): any {
   const objectMatch = text.match(/\{[\s\S]*\}/);
   const candidate = objectMatch ? objectMatch[0] : text;
-  return parseJsonWithRepair(candidate);
+
+  try {
+    return parseJsonWithRepair(candidate);
+  } catch (firstError) {
+    // The response may have been truncated by the model's token limit.
+    // Try to salvage whatever complete questions were generated.
+    const recovered = recoverTruncatedQuestionsJson(candidate);
+    if (recovered !== null) {
+      try {
+        const result = parseJsonWithRepair(recovered);
+        console.warn(
+          `[repairJson] Recovered truncated JSON — salvaged ${result?.questions?.length ?? 0} questions`
+        );
+        return result;
+      } catch {
+        // Recovery also failed — fall through to throw the original error
+      }
+    }
+    throw firstError;
+  }
 }

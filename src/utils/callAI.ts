@@ -66,6 +66,8 @@ export async function callAI({
           'Content-Type': 'application/json',
           'x-api-key': apiKey,
           'anthropic-version': '2023-06-01',
+          // Enable extended output so large batches (20 questions) aren't truncated
+          'anthropic-beta': 'output-128k-2025-02-19',
         },
         body: JSON.stringify(body),
       });
@@ -187,7 +189,7 @@ export async function loadModelConfig(): Promise<ModelConfig> {
         model: "claude-sonnet-4-6",
         temperature: 0.7,
         timeout: 60000,
-        maxTokens: 8000,
+        maxTokens: 16000,
         systemPrompt: "Du bist ein erfahrener Mathematiklehrer für deutsche Gymnasien. Du erstellst hochwertige, didaktisch durchdachte Mathematikaufgaben für Schüler. Du kennst die Anforderungsbereiche (AFB) I, II und III des deutschen Bildungssystems. Du nutzt LaTeX für mathematische Formeln. Du antwortest immer auf Deutsch."
       },
       evaluateAnswer: {
