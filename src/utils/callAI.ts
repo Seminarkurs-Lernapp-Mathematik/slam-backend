@@ -186,10 +186,10 @@ export async function loadModelConfig(): Promise<ModelConfig> {
       generateQuestions: {
         description: "Generate math questions for students",
         provider: "claude",
-        model: "claude-sonnet-4-6",
+        model: "claude-haiku-4-5-20251001",
         temperature: 0.7,
         timeout: 60000,
-        maxTokens: 16000,
+        maxTokens: 8000,
         systemPrompt: "Du bist ein erfahrener Mathematiklehrer für deutsche Gymnasien. Du erstellst hochwertige, didaktisch durchdachte Mathematikaufgaben für Schüler. Du kennst die Anforderungsbereiche (AFB) I, II und III des deutschen Bildungssystems. Du nutzt LaTeX für mathematische Formeln. Du antwortest immer auf Deutsch."
       },
       evaluateAnswer: {
