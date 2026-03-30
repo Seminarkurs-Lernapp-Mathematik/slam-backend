@@ -21,8 +21,9 @@ compatibility_flags = ["nodejs_compat"]
 #   wrangler secret put ANTHROPIC_API_KEY
 #   wrangler secret put FIREBASE_SERVICE_ACCOUNT
 #
-# Model configuration is stored in config/models.json
+# Model configuration is stored in src/config/models.json
 # Each task specifies its provider (gemini/claude) and model ID directly
+# The JSON is bundled at build time — no filesystem access needed at runtime
 
 # ============================================================================
 # ENVIRONMENTS
