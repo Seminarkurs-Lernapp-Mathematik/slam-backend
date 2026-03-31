@@ -1,6 +1,6 @@
 // src/utils/verifyTeacherToken.test.ts
-import { describe, it, expect } from 'vitest'
-import { verifyFirebaseIdToken, requireTeacher } from './verifyTeacherToken'
+import { describe, it, expect, vi } from 'vitest'
+import { verifyFirebaseIdToken, requireTeacher, _verifyRef } from './verifyTeacherToken'
 import { Hono } from 'hono'
 import type { Env } from '../index'
 
@@ -53,6 +53,31 @@ describe('verifyFirebaseIdToken — claim checks (no network)', () => {
     )
     await expect(verifyFirebaseIdToken(token, PROJECT_ID)).rejects.toThrow('Missing key ID')
   })
+
+  it('throws on token with future iat', async () => {
+    const future = Math.floor(Date.now() / 1000) + 3600
+    const token = fakeJwt(
+      { alg: 'RS256', kid: 'k1' },
+      { exp: future, iat: future + 100, iss: `https://securetoken.google.com/${PROJECT_ID}`, aud: PROJECT_ID, sub: 'uid1' }
+    )
+    await expect(verifyFirebaseIdToken(token, PROJECT_ID)).rejects.toThrow('Token not yet valid')
+  })
+
+  it('throws when kid is not in Google public keys', async () => {
+    const future = Math.floor(Date.now() / 1000) + 3600
+    const token = fakeJwt(
+      { alg: 'RS256', kid: 'nonexistent-kid' },
+      { exp: future, iat: 0, iss: `https://securetoken.google.com/${PROJECT_ID}`, aud: PROJECT_ID, sub: 'uid1' }
+    )
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(
+      new Response(JSON.stringify({ keys: [{ kid: 'other-kid', kty: 'RSA', alg: 'RS256', use: 'sig', n: 'abc', e: 'AQAB' }] }))
+    ))
+
+    await expect(verifyFirebaseIdToken(token, PROJECT_ID)).rejects.toThrow('Unknown key ID')
+
+    vi.unstubAllGlobals()
+  })
 })
 
 describe('requireTeacher middleware', () => {
@@ -85,5 +110,25 @@ describe('requireTeacher middleware', () => {
       mockEnv
     )
     expect(res.status).toBe(401)
+  })
+
+  it('returns 403 when token has no teacher role', async () => {
+    const spy = vi.spyOn(_verifyRef, 'fn').mockResolvedValueOnce({
+      sub: 'student-uid',
+      role: 'student',
+      iss: `https://securetoken.google.com/${PROJECT_ID}`,
+      aud: PROJECT_ID,
+      exp: 9999999999,
+      iat: 0,
+    })
+
+    const app = makeApp()
+    const res = await app.fetch(
+      new Request('http://localhost/', { headers: { Authorization: 'Bearer aaa.bbb.ccc' } }),
+      mockEnv
+    )
+    expect(res.status).toBe(403)
+
+    spy.mockRestore()
   })
 })

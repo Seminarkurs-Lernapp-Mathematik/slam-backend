@@ -71,6 +71,7 @@ export async function verifyFirebaseIdToken(
   const payload = JSON.parse(decodeBase64url(parts[1])) as JWTPayload;
 
   if (payload.exp < Date.now() / 1000) throw new Error('Token expired');
+  if (payload.iat > Date.now() / 1000) throw new Error('Token not yet valid');
   if (payload.iss !== `https://securetoken.google.com/${projectId}`) throw new Error('Invalid issuer');
   if (payload.aud !== projectId) throw new Error('Invalid audience');
   if (!header.kid) throw new Error('Missing key ID in token header');
@@ -87,6 +88,9 @@ export async function verifyFirebaseIdToken(
   return payload;
 }
 
+// Indirection object so tests can spy on verifyFirebaseIdToken via _verifyRef.fn
+export const _verifyRef = { fn: verifyFirebaseIdToken };
+
 export const requireTeacher: MiddlewareHandler<{
   Bindings: Env;
   Variables: { teacherUid: string };
@@ -99,7 +103,7 @@ export const requireTeacher: MiddlewareHandler<{
 
   try {
     const { project_id } = JSON.parse(c.env.FIREBASE_SERVICE_ACCOUNT) as { project_id: string };
-    const payload = await verifyFirebaseIdToken(token, project_id);
+    const payload = await _verifyRef.fn(token, project_id);
 
     if (payload.role !== 'teacher') {
       return c.json({ success: false, error: 'Forbidden: teacher role required' }, 403);
