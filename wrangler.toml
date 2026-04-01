@@ -11,15 +11,17 @@ compatibility_flags = ["nodejs_compat"]
 # ============================================================================
 # Set these using: wrangler secret put <VARIABLE_NAME>
 #
-# Required secrets:
+# Required secrets (set via wrangler secret put):
 # - GEMINI_API_KEY: Google Gemini API key for AI generation
 # - ANTHROPIC_API_KEY: Anthropic Claude API key for AI generation
-# - FIREBASE_SERVICE_ACCOUNT: JSON string for Firestore access
+# - FIREBASE_SERVICE_ACCOUNT: JSON string for Firestore + admin access
+# - FIREBASE_API_KEY: Firebase Web API Key (for Identity Toolkit OOB emails)
 #
 # Example:
 #   wrangler secret put GEMINI_API_KEY
 #   wrangler secret put ANTHROPIC_API_KEY
 #   wrangler secret put FIREBASE_SERVICE_ACCOUNT
+#   wrangler secret put FIREBASE_API_KEY
 #
 # Model configuration is stored in src/config/models.json
 # Each task specifies its provider (gemini/claude) and model ID directly

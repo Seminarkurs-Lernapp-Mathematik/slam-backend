@@ -79,3 +79,86 @@ describe('POST /api/teacher/student/:userId/ai-assessment', () => {
     expect(res.status).toBe(200)
   })
 })
+
+describe('POST /api/teacher/student/invite', () => {
+  beforeEach(async () => {
+    vi.resetModules()
+    vi.doMock('../utils/firebaseAuth', () => ({
+      getFirebaseConfig: vi.fn().mockResolvedValue({ projectId: 'test-proj', accessToken: 'test-token' }),
+    }))
+    vi.doMock('../utils/firebaseAdmin', () => ({
+      createFirebaseUser: vi.fn().mockResolvedValue('new-uid-123'),
+      sendPasswordResetEmail: vi.fn().mockResolvedValue(undefined),
+    }))
+  })
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  it('creates a user and sends a setup email, returns uid', async () => {
+    const app = await makeApp()
+    const res = await app.fetch(
+      new Request('http://localhost/invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'new@mvl-gym.de', displayName: 'Neuer Schüler' }),
+      }),
+      mockEnv
+    )
+    expect(res.status).toBe(201)
+    const body = await res.json() as any
+    expect(body.uid).toBe('new-uid-123')
+    expect(body.email).toBe('new@mvl-gym.de')
+  })
+
+  it('returns 400 when email is missing', async () => {
+    const app = await makeApp()
+    const res = await app.fetch(
+      new Request('http://localhost/invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ displayName: 'No Email' }),
+      }),
+      mockEnv
+    )
+    expect(res.status).toBe(400)
+  })
+})
+
+describe('POST /api/teacher/student/reset-password', () => {
+  beforeEach(async () => {
+    vi.resetModules()
+    vi.doMock('../utils/firebaseAuth', () => ({
+      getFirebaseConfig: vi.fn().mockResolvedValue({ projectId: 'test-proj', accessToken: 'test-token' }),
+    }))
+    vi.doMock('../utils/firebaseAdmin', () => ({
+      createFirebaseUser: vi.fn().mockResolvedValue('new-uid-123'),
+      sendPasswordResetEmail: vi.fn().mockResolvedValue(undefined),
+    }))
+  })
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  it('sends password reset email and returns 200', async () => {
+    const app = await makeApp()
+    const res = await app.fetch(
+      new Request('http://localhost/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'student@mvl-gym.de' }),
+      }),
+      mockEnv
+    )
+    expect(res.status).toBe(200)
+  })
+
+  it('returns 400 when email is missing', async () => {
+    const app = await makeApp()
+    const res = await app.fetch(
+      new Request('http://localhost/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      }),
+      mockEnv
+    )
+    expect(res.status).toBe(400)
+  })
+})

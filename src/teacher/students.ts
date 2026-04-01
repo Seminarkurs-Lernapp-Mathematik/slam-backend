@@ -4,18 +4,43 @@ import type { Env } from '../index';
 import { getFirebaseConfig } from '../utils/firebaseAuth';
 import { fsQuery } from '../utils/firestore';
 import { callAI } from '../utils/callAI';
+import { createFirebaseUser, sendPasswordResetEmail } from '../utils/firebaseAdmin';
 import modelsConfig from '../config/models.json';
 
 type AppEnv = { Bindings: Env; Variables: { teacherUid: string } };
 
 const router = new Hono<AppEnv>();
 
+// POST /api/teacher/student/invite
+// Must be registered before /:userId routes to avoid "invite" matching as userId
+router.post('/invite', async (c) => {
+  const body = await c.req.json<{ email?: string; displayName?: string }>();
+  if (!body.email?.trim()) {
+    return c.json({ success: false, error: 'email is required' }, 400);
+  }
+
+  const uid = await createFirebaseUser(c.env, body.email.trim(), body.displayName?.trim() ?? '');
+  await sendPasswordResetEmail(c.env, body.email.trim());
+
+  return c.json({ uid, email: body.email.trim() }, 201);
+});
+
+// POST /api/teacher/student/reset-password
+router.post('/reset-password', async (c) => {
+  const body = await c.req.json<{ email?: string }>();
+  if (!body.email?.trim()) {
+    return c.json({ success: false, error: 'email is required' }, 400);
+  }
+
+  await sendPasswordResetEmail(c.env, body.email.trim());
+  return c.json({ success: true });
+});
+
 // POST /api/teacher/student/:userId/ai-assessment
 router.post('/:userId/ai-assessment', async (c) => {
   const userId = c.req.param('userId');
   const { projectId, accessToken } = await getFirebaseConfig(c.env);
 
-  // Fetch last 50 question history entries
   const history = await fsQuery(projectId, accessToken, `users/${userId}`, {
     from: [{ collectionId: 'questionHistory' }],
     orderBy: [{ field: { fieldPath: 'timestamp' }, direction: 'DESCENDING' }],
