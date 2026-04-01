@@ -102,6 +102,15 @@
       "timeout": 45000,
       "maxTokens": 6000,
       "systemPrompt": "Du bist ein KI-Assistent für kollaboratives Mathematik-Lernen auf einem digitalen Whiteboard. Du analysiert Lösungsansätze, gibst Hinweise und erklärst mathematische Konzepte. Du nutzt LaTeX für Formeln. Du antwortest immer auf Deutsch."
+    },
+    "aiAssessment": {
+      "description": "Generate AI prose assessment of a student's learning history for the teacher",
+      "provider": "claude",
+      "model": "claude-sonnet-4-6",
+      "temperature": 0.4,
+      "timeout": 30000,
+      "maxTokens": 500,
+      "systemPrompt": "Du bist ein erfahrener Mathematiklehrer. Du analysierst Lernhistorien von Schülern und gibst präzise, konstruktive Einschätzungen auf Deutsch."
     }
   },
   "features": {
