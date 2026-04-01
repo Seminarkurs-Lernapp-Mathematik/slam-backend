@@ -17,6 +17,14 @@ import { handleUpdateAutoMode } from './api/update-auto-mode';
 import { handleManageLearningPlan } from './api/manage-learning-plan';
 import { handleCollaborativeCanvas } from './api/collaborative-canvas';
 
+// Teacher dashboard routes
+import { requireTeacher } from './utils/verifyTeacherToken';
+import meRouter from './teacher/me';
+import classesRouter from './teacher/classes';
+import analyticsRouter from './teacher/analytics';
+import goalsRouter from './teacher/goals';
+import studentsRouter from './teacher/students';
+
 // ============================================================================
 // TYPE DEFINITIONS
 // ============================================================================
@@ -28,13 +36,14 @@ export interface Env {
   ANTHROPIC_API_KEY: string;
   // Firebase Service Account (set via wrangler secret)
   FIREBASE_SERVICE_ACCOUNT: string;
+  FIREBASE_API_KEY: string;
 }
 
 // ============================================================================
 // MAIN HONO APP
 // ============================================================================
 
-const app = new Hono<{ Bindings: Env }>();
+const app = new Hono<{ Bindings: Env; Variables: { teacherUid: string } }>();
 
 // ============================================================================
 // CORS MIDDLEWARE
@@ -63,6 +72,16 @@ app.use('*', cors({
 }));
 
 // ============================================================================
+// TEACHER DASHBOARD ROUTES (all require role: "teacher" Firebase claim)
+// ============================================================================
+app.use('/api/teacher/*', requireTeacher);
+app.route('/api/teacher/me', meRouter);
+app.route('/api/teacher/class', classesRouter);
+app.route('/api/teacher/class', analyticsRouter);
+app.route('/api/teacher/class', goalsRouter);
+app.route('/api/teacher/student', studentsRouter);
+
+// ============================================================================
 // ROUTES
 // ============================================================================
 
@@ -88,6 +107,21 @@ app.get('/', (c) => {
       'POST /api/analyze-image',
       'POST /api/collaborative-canvas',
       'POST /api/purchase',
+
+      'GET  /api/teacher/me',
+      'PUT  /api/teacher/me',
+      'GET  /api/teacher/class/:classId/students',
+      'GET  /api/teacher/class/:classId/analytics',
+      'GET  /api/teacher/class/:classId/feed',
+      'POST /api/teacher/class/:classId/goal',
+      'PATCH /api/teacher/class/:classId',
+      'POST /api/teacher/class',
+      'DELETE /api/teacher/class/:classId',
+      'POST /api/teacher/class/:classId/students',
+      'DELETE /api/teacher/class/:classId/students/:userId',
+      'POST /api/teacher/student/:userId/ai-assessment',
+      'POST /api/teacher/student/invite',
+      'POST /api/teacher/student/reset-password',
     ],
   });
 });
