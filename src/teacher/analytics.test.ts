@@ -1,5 +1,5 @@
 // src/teacher/analytics.test.ts
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { Hono } from 'hono'
 import type { Env } from '../index'
 
@@ -79,11 +79,16 @@ const mockQuestionHistory = [
 ]
 
 describe('GET /api/teacher/class/:classId/analytics', () => {
-  beforeEach(() => { vi.restoreAllMocks() })
+  beforeEach(async () => {
+    vi.resetModules()
+    vi.doMock('../utils/firebaseAuth', () => ({
+      getFirebaseConfig: vi.fn().mockResolvedValue({ projectId: 'test-proj', accessToken: 'test-token' }),
+    }))
+  })
+  afterEach(() => { vi.unstubAllGlobals() })
 
   it('returns summary and topic breakdown', async () => {
     vi.stubGlobal('fetch', vi.fn()
-      .mockResolvedValueOnce(new Response(JSON.stringify({ access_token: 'tok', expires_in: 3600 })))
       .mockResolvedValueOnce(new Response(JSON.stringify(mockClassDoc))) // GET class
       // Two students: each gets a questionHistory query and a user doc
       .mockResolvedValueOnce(new Response(JSON.stringify(mockQuestionHistory))) // student-1 history
@@ -121,7 +126,6 @@ describe('GET /api/teacher/class/:classId/analytics', () => {
       fields: { ...mockClassDoc.fields, teacherId: { stringValue: 'other-teacher' } },
     }
     vi.stubGlobal('fetch', vi.fn()
-      .mockResolvedValueOnce(new Response(JSON.stringify({ access_token: 'tok', expires_in: 3600 })))
       .mockResolvedValueOnce(new Response(JSON.stringify(foreignClassDoc)))
     )
 
@@ -132,11 +136,16 @@ describe('GET /api/teacher/class/:classId/analytics', () => {
 })
 
 describe('GET /api/teacher/class/:classId/feed', () => {
-  beforeEach(() => { vi.restoreAllMocks() })
+  beforeEach(async () => {
+    vi.resetModules()
+    vi.doMock('../utils/firebaseAuth', () => ({
+      getFirebaseConfig: vi.fn().mockResolvedValue({ projectId: 'test-proj', accessToken: 'test-token' }),
+    }))
+  })
+  afterEach(() => { vi.unstubAllGlobals() })
 
   it('returns merged feed entries from all students', async () => {
     vi.stubGlobal('fetch', vi.fn()
-      .mockResolvedValueOnce(new Response(JSON.stringify({ access_token: 'tok', expires_in: 3600 })))
       .mockResolvedValueOnce(new Response(JSON.stringify(mockClassDoc))) // GET class
       .mockResolvedValueOnce(new Response(JSON.stringify(mockQuestionHistory))) // student-1
       .mockResolvedValueOnce(new Response(JSON.stringify({ // student-1 user doc

@@ -4,22 +4,11 @@ import type { Env } from '../index';
 import { getFirebaseConfig } from '../utils/firebaseAuth';
 import { fsGet, fsQuery } from '../utils/firestore';
 import type { ClassDoc, TopicAccuracy, AnalyticsSummary, FeedEntry } from './types';
+import { getOwnedClass } from './classUtils';
 
 type AppEnv = { Bindings: Env; Variables: { teacherUid: string } };
 
 const router = new Hono<AppEnv>();
-
-async function getOwnedClass(
-  projectId: string,
-  accessToken: string,
-  classId: string,
-  teacherUid: string
-): Promise<ClassDoc> {
-  const doc = await fsGet(projectId, accessToken, `classes/${classId}`);
-  if (!doc) throw Object.assign(new Error('Class not found'), { status: 404 });
-  if (doc.teacherId !== teacherUid) throw Object.assign(new Error('Forbidden'), { status: 403 });
-  return doc as unknown as ClassDoc;
-}
 
 // GET /api/teacher/class/:classId/analytics
 router.get('/:classId/analytics', async (c) => {

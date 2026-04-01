@@ -8,8 +8,8 @@ import type { Env } from '../index';
 
 interface ServiceAccount {
   project_id: string;
-  private_key?: string;
-  client_email?: string;
+  private_key: string;
+  client_email: string;
 }
 
 interface FirebaseConfig {
@@ -67,7 +67,7 @@ async function importPrivateKey(pem: string): Promise<CryptoKey> {
 /**
  * Create a signed JWT for Google OAuth2
  */
-async function createSignedJWT(serviceAccount: Required<ServiceAccount>): Promise<string> {
+async function createSignedJWT(serviceAccount: ServiceAccount): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
   const expiry = now + 3600; // 1 hour
 
@@ -105,21 +105,17 @@ async function createSignedJWT(serviceAccount: Required<ServiceAccount>): Promis
  * Exchange a signed JWT for an OAuth2 access token
  */
 async function getAccessToken(serviceAccount: ServiceAccount): Promise<string> {
-  const hasFullCredentials = !!(serviceAccount.private_key && serviceAccount.client_email);
-
-  // Check cache only when full credentials are present (skip cache in test/minimal mode)
-  if (hasFullCredentials && cachedToken && cachedToken.expiresAt > Date.now() + 60000) {
+  // Check cache
+  if (cachedToken && cachedToken.expiresAt > Date.now() + 60000) {
     return cachedToken.token;
   }
 
-  const body = hasFullCredentials
-    ? `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${await createSignedJWT(serviceAccount as Required<ServiceAccount>)}`
-    : `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=`;
+  const jwt = await createSignedJWT(serviceAccount);
 
   const response = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body,
+    body: `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${jwt}`,
   });
 
   if (!response.ok) {
@@ -130,13 +126,11 @@ async function getAccessToken(serviceAccount: ServiceAccount): Promise<string> {
   const token = data.access_token;
   const expiresIn = data.expires_in || 3600;
 
-  // Cache the token only when using full credentials
-  if (hasFullCredentials) {
-    cachedToken = {
-      token,
-      expiresAt: Date.now() + expiresIn * 1000,
-    };
-  }
+  // Cache the token
+  cachedToken = {
+    token,
+    expiresAt: Date.now() + expiresIn * 1000,
+  };
 
   return token;
 }
@@ -171,7 +165,7 @@ export async function getFirebaseConfig(
     throw new Error('Invalid FIREBASE_SERVICE_ACCOUNT format');
   }
 
-  if (!serviceAccount.project_id) {
+  if (!serviceAccount.project_id || !serviceAccount.private_key || !serviceAccount.client_email) {
     throw new Error('FIREBASE_SERVICE_ACCOUNT missing required fields');
   }
 
