@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { Hono } from 'hono'
 import type { Env } from '../index'
 
@@ -180,6 +180,7 @@ describe('GET /:classId/students', () => {
       }),
     }))
   })
+  afterEach(() => { vi.unstubAllGlobals() })
 
   it('returns student summaries for the class', async () => {
     const classWithStudent = {
@@ -242,6 +243,7 @@ describe('POST /:classId/students (add students)', () => {
       }),
     }))
   })
+  afterEach(() => { vi.unstubAllGlobals() })
 
   it('adds student UIDs to the class', async () => {
     vi.stubGlobal('fetch', vi.fn()
@@ -290,6 +292,7 @@ describe('DELETE /:classId/students/:userId (remove student)', () => {
       }),
     }))
   })
+  afterEach(() => { vi.unstubAllGlobals() })
 
   it('removes a student from the class', async () => {
     const classWithStudent = {

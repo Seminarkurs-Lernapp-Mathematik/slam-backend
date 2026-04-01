@@ -180,8 +180,9 @@ router.post('/:classId/students', async (c) => {
   const classId = c.req.param('classId');
   const body = await c.req.json<{ studentIds?: string[] }>();
 
-  if (!Array.isArray(body.studentIds) || body.studentIds.length === 0) {
-    return c.json({ success: false, error: 'studentIds array is required' }, 400);
+  if (!Array.isArray(body.studentIds) || body.studentIds.length === 0 ||
+      !body.studentIds.every((id) => typeof id === 'string' && id.length > 0)) {
+    return c.json({ success: false, error: 'studentIds must be a non-empty array of strings' }, 400);
   }
 
   const { projectId, accessToken } = await getFirebaseConfig(c.env);
