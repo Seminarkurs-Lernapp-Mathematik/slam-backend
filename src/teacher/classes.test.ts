@@ -169,3 +169,145 @@ describe('DELETE /:classId (delete class)', () => {
     expect(res.status).toBe(403)
   })
 })
+
+describe('GET /:classId/students', () => {
+  beforeEach(async () => {
+    vi.resetModules()
+    vi.doMock('../utils/firebaseAuth', () => ({
+      getFirebaseConfig: vi.fn().mockResolvedValue({
+        projectId: 'test-proj',
+        accessToken: 'test-token',
+      }),
+    }))
+  })
+
+  it('returns student summaries for the class', async () => {
+    const classWithStudent = {
+      ...mockClassDoc,
+      fields: {
+        ...mockClassDoc.fields,
+        studentIds: { arrayValue: { values: [{ stringValue: 'student-uid-1' }] } },
+      },
+    }
+    const studentUserDoc = {
+      name: 'projects/test-proj/databases/(default)/documents/users/student-uid-1',
+      fields: {
+        uid: { stringValue: 'student-uid-1' },
+        displayName: { stringValue: 'Max Mustermann' },
+        email: { stringValue: 'max@mvl-gym.de' },
+        streak: { integerValue: '5' },
+        totalXp: { integerValue: '1200' },
+      },
+    }
+
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(classWithStudent)))
+      // For each student: fsQuery for sessions + fsQuery for question history + fsGet for user doc
+      .mockResolvedValueOnce(new Response(JSON.stringify([])))    // sessions query → empty
+      .mockResolvedValueOnce(new Response(JSON.stringify([])))    // question history query → empty
+      .mockResolvedValueOnce(new Response(JSON.stringify(studentUserDoc))) // user doc
+    )
+
+    const app = await makeApp()
+    const res = await app.fetch(new Request('http://localhost/cls-abc/students'), mockEnv)
+    expect(res.status).toBe(200)
+    const body = await res.json() as any
+    expect(Array.isArray(body)).toBe(true)
+    expect(body[0].uid).toBe('student-uid-1')
+    expect(body[0].displayName).toBe('Max Mustermann')
+    expect(['active', 'idle', 'struggling', 'offline']).toContain(body[0].status)
+  })
+
+  it('returns 403 for a class owned by another teacher', async () => {
+    const foreignClass = {
+      ...mockClassDoc,
+      fields: { ...mockClassDoc.fields, teacherId: { stringValue: 'other-teacher' } },
+    }
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(foreignClass)))
+    )
+    const app = await makeApp()
+    const res = await app.fetch(new Request('http://localhost/cls-abc/students'), mockEnv)
+    expect(res.status).toBe(403)
+  })
+})
+
+describe('POST /:classId/students (add students)', () => {
+  beforeEach(async () => {
+    vi.resetModules()
+    vi.doMock('../utils/firebaseAuth', () => ({
+      getFirebaseConfig: vi.fn().mockResolvedValue({
+        projectId: 'test-proj',
+        accessToken: 'test-token',
+      }),
+    }))
+  })
+
+  it('adds student UIDs to the class', async () => {
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(mockClassDoc)))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        ...mockClassDoc,
+        fields: {
+          ...mockClassDoc.fields,
+          studentIds: { arrayValue: { values: [{ stringValue: 'new-student-uid' }] } },
+        },
+      })))
+    )
+    const app = await makeApp()
+    const res = await app.fetch(
+      new Request('http://localhost/cls-abc/students', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ studentIds: ['new-student-uid'] }),
+      }),
+      mockEnv
+    )
+    expect(res.status).toBe(200)
+  })
+
+  it('returns 400 when studentIds is missing', async () => {
+    const app = await makeApp()
+    const res = await app.fetch(
+      new Request('http://localhost/cls-abc/students', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      }),
+      mockEnv
+    )
+    expect(res.status).toBe(400)
+  })
+})
+
+describe('DELETE /:classId/students/:userId (remove student)', () => {
+  beforeEach(async () => {
+    vi.resetModules()
+    vi.doMock('../utils/firebaseAuth', () => ({
+      getFirebaseConfig: vi.fn().mockResolvedValue({
+        projectId: 'test-proj',
+        accessToken: 'test-token',
+      }),
+    }))
+  })
+
+  it('removes a student from the class', async () => {
+    const classWithStudent = {
+      ...mockClassDoc,
+      fields: {
+        ...mockClassDoc.fields,
+        studentIds: { arrayValue: { values: [{ stringValue: 'student-to-remove' }] } },
+      },
+    }
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(classWithStudent)))
+      .mockResolvedValueOnce(new Response(JSON.stringify(mockClassDoc)))
+    )
+    const app = await makeApp()
+    const res = await app.fetch(
+      new Request('http://localhost/cls-abc/students/student-to-remove', { method: 'DELETE' }),
+      mockEnv
+    )
+    expect(res.status).toBe(200)
+  })
+})
