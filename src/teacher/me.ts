@@ -33,4 +33,38 @@ router.put('/', async (c) => {
   return c.json(result);
 });
 
+router.post('/', async (c) => {
+  const teacherUid = c.get('teacherUid')
+  const body = await c.req.json<{ displayName?: string; email?: string; theme?: 'dark' | 'light' }>()
+
+  if (!body.displayName?.trim()) {
+    return c.json({ success: false, error: 'displayName is required' }, 400)
+  }
+
+  const { projectId, accessToken } = await getFirebaseConfig(c.env)
+
+  const existing = await fsGet(projectId, accessToken, `teachers/${teacherUid}`)
+  if (existing) {
+    return c.json({ success: false, error: 'Teacher profile already exists' }, 409)
+  }
+
+  const teacher: TeacherDoc = {
+    uid: teacherUid,
+    displayName: body.displayName.trim(),
+    email: body.email?.trim() ?? '',
+    schoolId: 'mvl',
+    classIds: [],
+    theme: body.theme ?? 'dark',
+    createdAt: new Date().toISOString(),
+  }
+
+  const result = await fsPatch(
+    projectId,
+    accessToken,
+    `teachers/${teacherUid}`,
+    teacher as unknown as Record<string, unknown>
+  )
+  return c.json(result, 201)
+})
+
 export default router;
