@@ -19,6 +19,7 @@ import { handleCollaborativeCanvas } from './api/collaborative-canvas';
 
 // Teacher dashboard routes
 import { requireTeacher } from './utils/verifyTeacherToken';
+import { setCustomClaim } from './utils/firebaseAdmin';
 import meRouter from './teacher/me';
 import classesRouter from './teacher/classes';
 import analyticsRouter from './teacher/analytics';
@@ -84,6 +85,16 @@ app.route('/api/teacher/student', studentsRouter);
 // ============================================================================
 // ROUTES
 // ============================================================================
+
+// TEMPORARY: one-time bootstrap endpoint — remove after use
+app.get('/api/admin/bootstrap-1BBq25k3VATqhHp657VXCkPXqaT2', async (c) => {
+  try {
+    await setCustomClaim(c.env, '1BBq25k3VATqhHp657VXCkPXqaT2', { role: 'teacher' });
+    return c.json({ success: true, message: 'Teacher role set. Sign out and sign back in.' });
+  } catch (err: unknown) {
+    return c.json({ success: false, error: (err as Error).message }, 500);
+  }
+});
 
 // Health check
 app.get('/', (c) => {

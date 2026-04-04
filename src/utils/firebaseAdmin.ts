@@ -114,6 +114,30 @@ export async function createFirebaseUser(env: Env, email: string, displayName: s
 }
 
 /**
+ * Set a custom claim on a Firebase user via the Admin REST API.
+ */
+export async function setCustomClaim(env: Env, uid: string, claims: Record<string, unknown>): Promise<void> {
+  const sa: ServiceAccount = JSON.parse(env.FIREBASE_SERVICE_ACCOUNT);
+  const adminToken = await getAdminToken(sa);
+
+  const res = await fetch(
+    `https://identitytoolkit.googleapis.com/v1/projects/${sa.project_id}/accounts:update`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${adminToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ localId: uid, customAttributes: JSON.stringify(claims) }),
+    }
+  );
+  if (!res.ok) {
+    const err = await res.json() as any;
+    throw new Error(err?.error?.message ?? `Failed to set custom claim: ${res.status}`);
+  }
+}
+
+/**
  * Send a password reset email to the given address.
  * Uses the Firebase Web API Key (public, not a secret in the same sense).
  */
