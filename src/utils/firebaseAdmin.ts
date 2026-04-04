@@ -60,7 +60,7 @@ async function getAdminToken(serviceAccount: ServiceAccount): Promise<string> {
     aud: 'https://oauth2.googleapis.com/token',
     iat: now,
     exp: now + 3600,
-    scope: 'https://www.googleapis.com/auth/firebase',
+    scope: 'https://www.googleapis.com/auth/firebase https://www.googleapis.com/auth/identitytoolkit',
   }));
   const signingInput = `${header}.${payload}`;
   const key = await importPrivateKey(serviceAccount.private_key);
