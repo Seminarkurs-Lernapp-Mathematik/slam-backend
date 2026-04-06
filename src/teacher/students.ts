@@ -19,8 +19,24 @@ router.post('/invite', async (c) => {
     return c.json({ success: false, error: 'email is required' }, 400);
   }
 
-  const uid = await createFirebaseUser(c.env, body.email.trim(), body.displayName?.trim() ?? '');
-  await sendPasswordResetEmail(c.env, body.email.trim());
+  let uid: string;
+  try {
+    uid = await createFirebaseUser(c.env, body.email.trim(), body.displayName?.trim() ?? '');
+  } catch (err: unknown) {
+    const msg = (err as Error).message ?? 'Failed to create user';
+    // If user already exists, look up their UID instead of failing
+    if (msg.includes('EMAIL_EXISTS')) {
+      return c.json({ success: false, error: 'EMAIL_EXISTS' }, 409);
+    }
+    return c.json({ success: false, error: msg }, 500);
+  }
+
+  try {
+    await sendPasswordResetEmail(c.env, body.email.trim());
+  } catch (err: unknown) {
+    // Non-fatal: user was created, email just didn't send
+    console.error('Failed to send invite email:', (err as Error).message);
+  }
 
   return c.json({ uid, email: body.email.trim() }, 201);
 });
