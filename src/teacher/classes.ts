@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import type { Env } from '../index';
 import { getFirebaseConfig } from '../utils/firebaseAuth';
 import { fsGet, fsPatch, fsDelete, fsQuery } from '../utils/firestore';
-import type { ClassDoc } from './types';
+import type { ClassDoc, TeacherDoc } from './types';
 import { getOwnedClass } from './classUtils';
 
 type AppEnv = { Bindings: Env; Variables: { teacherUid: string } };
@@ -11,6 +11,19 @@ const router = new Hono<AppEnv>();
 function generateId(): string {
   return crypto.randomUUID().replace(/-/g, '').slice(0, 21);
 }
+
+// GET /:classId — fetch a single class
+router.get('/:classId', async (c) => {
+  const teacherUid = c.get('teacherUid');
+  const classId = c.req.param('classId');
+  const { projectId, accessToken } = await getFirebaseConfig(c.env);
+  try {
+    const cls = await getOwnedClass(projectId, accessToken, classId, teacherUid);
+    return c.json(cls);
+  } catch (e: any) {
+    return c.json({ success: false, error: e.message }, e.status ?? 500);
+  }
+});
 
 // POST / — create class
 router.post('/', async (c) => {
@@ -32,8 +45,16 @@ router.post('/', async (c) => {
     createdAt: now,
     updatedAt: now,
   };
-  const result = await fsPatch(projectId, accessToken, `classes/${classId}`, classDoc as unknown as Record<string, unknown>);
-  return c.json(result, 201);
+  await fsPatch(projectId, accessToken, `classes/${classId}`, classDoc as unknown as Record<string, unknown>);
+
+  // Add classId to teacher's classIds array
+  const teacher = await fsGet(projectId, accessToken, `teachers/${teacherUid}`) as unknown as TeacherDoc;
+  if (teacher) {
+    const updatedTeacher = { ...teacher, classIds: [...(teacher.classIds ?? []), classId] };
+    await fsPatch(projectId, accessToken, `teachers/${teacherUid}`, updatedTeacher as unknown as Record<string, unknown>);
+  }
+
+  return c.json(classDoc, 201);
 });
 
 // PATCH /:classId — update name, gridConfig, or deskPositions
@@ -74,6 +95,14 @@ router.delete('/:classId', async (c) => {
     return c.json({ success: false, error: e.message }, e.status ?? 500);
   }
   await fsDelete(projectId, accessToken, `classes/${classId}`);
+
+  // Remove classId from teacher's classIds array
+  const teacher = await fsGet(projectId, accessToken, `teachers/${teacherUid}`) as unknown as TeacherDoc;
+  if (teacher) {
+    const updatedTeacher = { ...teacher, classIds: (teacher.classIds ?? []).filter((id) => id !== classId) };
+    await fsPatch(projectId, accessToken, `teachers/${teacherUid}`, updatedTeacher as unknown as Record<string, unknown>);
+  }
+
   return new Response(null, { status: 204 });
 });
 
