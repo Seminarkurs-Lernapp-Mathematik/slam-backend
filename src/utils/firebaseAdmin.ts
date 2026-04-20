@@ -138,6 +138,35 @@ export async function setCustomClaim(env: Env, uid: string, claims: Record<strin
 }
 
 /**
+ * Look up an existing Firebase Auth user by email.
+ * Returns the user's UID.
+ */
+export async function getUserByEmail(env: Env, email: string): Promise<string> {
+  const sa: ServiceAccount = JSON.parse(env.FIREBASE_SERVICE_ACCOUNT);
+  const adminToken = await getAdminToken(sa);
+
+  const res = await fetch(
+    `https://identitytoolkit.googleapis.com/v1/projects/${sa.project_id}/accounts:lookup`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${adminToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email: [email] }),
+    }
+  );
+  if (!res.ok) {
+    const err = await res.json() as any;
+    throw new Error(err?.error?.message ?? `Failed to look up user: ${res.status}`);
+  }
+  const data = await res.json() as { users?: Array<{ localId: string }> };
+  const user = data.users?.[0];
+  if (!user) throw new Error(`User not found for email: ${email}`);
+  return user.localId;
+}
+
+/**
  * Send a password reset email to the given address.
  * Uses the Firebase Web API Key (public, not a secret in the same sense).
  */

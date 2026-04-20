@@ -4,7 +4,7 @@ import type { Env } from '../index';
 import { getFirebaseConfig } from '../utils/firebaseAuth';
 import { fsQuery } from '../utils/firestore';
 import { callAI } from '../utils/callAI';
-import { createFirebaseUser, sendPasswordResetEmail } from '../utils/firebaseAdmin';
+import { createFirebaseUser, sendPasswordResetEmail, getUserByEmail } from '../utils/firebaseAdmin';
 import modelsConfig from '../config/models.json';
 
 type AppEnv = { Bindings: Env; Variables: { teacherUid: string } };
@@ -24,11 +24,15 @@ router.post('/invite', async (c) => {
     uid = await createFirebaseUser(c.env, body.email.trim(), body.displayName?.trim() ?? '');
   } catch (err: unknown) {
     const msg = (err as Error).message ?? 'Failed to create user';
-    // If user already exists, look up their UID instead of failing
     if (msg.includes('EMAIL_EXISTS')) {
-      return c.json({ success: false, error: 'EMAIL_EXISTS' }, 409);
+      try {
+        uid = await getUserByEmail(c.env, body.email.trim());
+      } catch {
+        return c.json({ success: false, error: 'EMAIL_EXISTS' }, 409);
+      }
+    } else {
+      return c.json({ success: false, error: msg }, 500);
     }
-    return c.json({ success: false, error: msg }, 500);
   }
 
   try {
