@@ -23,6 +23,7 @@ import meRouter from "./teacher/me";
 import studentsRouter from "./teacher/students";
 // Teacher dashboard routes
 import { requireTeacher } from "./utils/verifyTeacherToken";
+import { rateLimit } from "./utils/rateLimit";
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -84,6 +85,8 @@ app.use(
 // ============================================================================
 // TEACHER DASHBOARD ROUTES (all require role: "teacher" Firebase claim)
 // ============================================================================
+// Rate limit: 120 req/min per IP (generous for dashboard use but prevents abuse)
+app.use("/api/teacher/*", rateLimit({ windowMs: 60_000, maxRequests: 120 }));
 app.use("/api/teacher/*", requireTeacher);
 app.route("/api/teacher/me", meRouter);
 app.route("/api/teacher/class", classesRouter);

@@ -95,23 +95,41 @@ export const requireTeacher: MiddlewareHandler<{
   Bindings: Env;
   Variables: { teacherUid: string };
 }> = async (c, next) => {
+  const ip = c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? 'unknown';
   const authHeader = c.req.header('Authorization');
+
   if (!authHeader?.startsWith('Bearer ')) {
+    console.warn(`[auth] Teacher route accessed without Bearer token — ip=${ip} path=${c.req.path}`);
     return c.json({ success: false, error: 'Unauthorized' }, 401);
   }
+
   const token = authHeader.slice(7);
+  // Sanity-check: JWT must be 3 dot-separated base64url segments
+  if (token.split('.').length !== 3) {
+    console.warn(`[auth] Malformed token — ip=${ip} path=${c.req.path}`);
+    return c.json({ success: false, error: 'Unauthorized' }, 401);
+  }
 
   try {
     const { project_id } = JSON.parse(c.env.FIREBASE_SERVICE_ACCOUNT) as { project_id: string };
     const payload = await _verifyRef.fn(token, project_id);
 
+    // `sub` must be a non-empty Firebase UID
+    if (!payload.sub || payload.sub.length < 20) {
+      console.warn(`[auth] Token with invalid sub — ip=${ip}`);
+      return c.json({ success: false, error: 'Unauthorized' }, 401);
+    }
+
     if (payload.role !== 'teacher') {
+      console.warn(`[auth] Forbidden — uid=${payload.sub.substring(0, 8)}… has role="${payload.role}" ip=${ip}`);
       return c.json({ success: false, error: 'Forbidden: teacher role required' }, 403);
     }
 
     c.set('teacherUid', payload.sub);
     await next();
-  } catch {
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`[auth] Token verification failed — ${msg} ip=${ip} path=${c.req.path}`);
     return c.json({ success: false, error: 'Unauthorized' }, 401);
   }
 };
