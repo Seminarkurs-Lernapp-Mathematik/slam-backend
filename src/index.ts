@@ -10,6 +10,7 @@ import { handleCollaborativeCanvas } from "./api/collaborative-canvas";
 import { handleCustomHint } from "./api/custom-hint";
 import { handleGenerateGeogebra } from "./api/generate-geogebra";
 import { handleGenerateMiniApp } from "./api/generate-mini-app";
+import { handleGetJob, handleGenerateMiniAppAsync } from "./api/jobs";
 import { handleGenerateQuestions } from "./api/generate-questions";
 import { handleGetModels } from "./api/get-models";
 import { handleManageLearningPlan } from "./api/manage-learning-plan";
@@ -115,6 +116,8 @@ app.get("/", (c) => {
 			"POST /api/custom-hint",
 			"POST /api/generate-geogebra",
 			"POST /api/generate-mini-app",
+				"POST /api/generate-mini-app/async",
+				"GET  /api/jobs/:jobId",
 			"POST /api/manage-learning-plan",
 			"POST /api/manage-memories",
 			"POST /api/analyze-image",
@@ -147,6 +150,8 @@ app.post("/api/custom-hint", handleCustomHint);
 
 // Generative Apps
 app.post("/api/generate-mini-app", handleGenerateMiniApp);
+app.post("/api/generate-mini-app/async", handleGenerateMiniAppAsync);
+app.get("/api/jobs/:jobId", handleGetJob);
 app.post("/api/generate-geogebra", handleGenerateGeogebra);
 
 // Learning & Memory

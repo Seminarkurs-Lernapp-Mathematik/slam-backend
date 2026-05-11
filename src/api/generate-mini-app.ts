@@ -17,7 +17,7 @@ import { sanitizePII } from '../utils/sanitizePII';
 // TYPE DEFINITIONS
 // ============================================================================
 
-interface ThemeColors {
+export interface ThemeColors {
   primary?: string;       // e.g. "#FF7A3B"
   primaryDark?: string;   // darker shade for hover / borders
   primaryLight?: string;  // very light tint for surfaces
@@ -43,7 +43,7 @@ interface GeneratedApp {
 // HELPER FUNCTIONS
 // ============================================================================
 
-function determineComplexity(description: string): 'simple' | 'medium' | 'advanced' {
+export function determineComplexity(description: string): 'simple' | 'medium' | 'advanced' {
   const lowerDesc = description.toLowerCase();
   if (
     lowerDesc.includes('3d') ||
@@ -152,7 +152,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--c-primary)}
 `;
 }
 
-function buildPrompt(description: string, complexity: string, theme?: ThemeColors): string {
+export function buildPrompt(description: string, complexity: string, theme?: ThemeColors): string {
   const designCSS = buildDesignSystemCSS(theme);
 
   return `Du bist ein Experte für interaktive mathematische Web-Anwendungen.
@@ -203,7 +203,7 @@ function extractJSONFromResponse(text: string): any {
   return parseJsonWithRepair(candidate);
 }
 
-function validateAndSanitizeApp(appData: any): GeneratedApp {
+export function validateAndSanitizeApp(appData: any): GeneratedApp {
   if (!appData.html || typeof appData.html !== 'string') {
     throw new APIError('Invalid response: missing html field', 500);
   }
