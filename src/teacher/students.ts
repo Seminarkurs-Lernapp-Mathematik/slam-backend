@@ -4,6 +4,7 @@ import type { Env } from '../index';
 import { getFirebaseConfig } from '../utils/firebaseAuth';
 import { fsQuery } from '../utils/firestore';
 import { callAI } from '../utils/callAI';
+import { parseJsonWithRepair } from '../utils/repairJson';
 import { createFirebaseUser, sendPasswordResetEmail, getUserByEmail } from '../utils/firebaseAdmin';
 import modelsConfig from '../config/models.json';
 
@@ -57,6 +58,7 @@ router.post('/reset-password', async (c) => {
 });
 
 // POST /api/teacher/student/:userId/ai-assessment
+// Returns a structured, explainable assessment with evidence per conclusion (XAI).
 router.post('/:userId/ai-assessment', async (c) => {
   const userId = c.req.param('userId');
   const { projectId, accessToken } = await getFirebaseConfig(c.env);
@@ -67,20 +69,52 @@ router.post('/:userId/ai-assessment', async (c) => {
     limit: 50,
   });
 
+  const totalAnswered = history.length;
+  const correctCount = history.filter((q: any) => q.isCorrect).length;
+  const accuracyPct = totalAnswered > 0 ? Math.round((correctCount / totalAnswered) * 100) : 0;
+
   const historyText = history
-    .map((q, i) => {
+    .map((q: any, i: number) => {
       const status = q.isCorrect ? '✓' : '✗';
       return `${i + 1}. [${status}] ${q.leitidee} › ${q.thema} › ${q.unterthema}: „${q.questionText}" → „${q.userAnswer}"`;
     })
     .join('\n');
 
-  const prompt = history.length > 0
-    ? `Lernhistorie der letzten ${history.length} Aufgaben:\n\n${historyText}\n\nBitte erstelle eine kurze Einschätzung (3–4 Sätze) mit: Stärken, wiederkehrenden Flüchtigkeitsfehlern, und einer konkreten Empfehlung für die Lehrkraft.`
-    : 'Dieser Schüler hat noch keine Aufgaben bearbeitet. Gib eine kurze Einschätzung.';
+  const prompt = totalAnswered > 0
+    ? `Du bist ein erfahrener Mathematiklehrer. Analysiere die Lernhistorie des Schülers.
+
+Statistik: ${totalAnswered} Aufgaben, ${accuracyPct}% richtig.
+
+Lernhistorie (neueste zuerst):
+${historyText}
+
+Erstelle eine strukturierte, nachvollziehbare Einschätzung als JSON. Gib für jede Aussage konkrete Belege aus der Lernhistorie an (Aufgabennummern), damit die Lehrkraft die KI-Entscheidung nachvollziehen kann.
+
+Antworte NUR mit diesem JSON, kein Markdown:
+{
+  "summary": "Kurze Gesamteinschätzung (2–3 Sätze)",
+  "strengths": [
+    { "text": "Stärke", "evidence": "Belege aus Aufg. X, Y, Z" }
+  ],
+  "weaknesses": [
+    { "text": "Schwäche", "evidence": "Belege aus Aufg. X, Y" }
+  ],
+  "recommendation": "Konkrete Handlungsempfehlung für die Lehrkraft",
+  "confidence": "high|medium|low",
+  "confidenceReason": "Begründung für das Konfidenz-Niveau (z.B. Datenbasis zu klein)"
+}`
+    : `{
+  "summary": "Dieser Schüler hat noch keine Aufgaben bearbeitet. Es liegen keine Daten für eine Einschätzung vor.",
+  "strengths": [],
+  "weaknesses": [],
+  "recommendation": "Schüler zur aktiven Nutzung des adaptiven Fragen-Feeds motivieren.",
+  "confidence": "low",
+  "confidenceReason": "Keine Lernhistorie vorhanden"
+}`;
 
   const taskConfig = (modelsConfig as any).tasks.aiAssessment;
 
-  const assessment = await callAI({
+  const rawResponse = await callAI({
     provider: taskConfig.provider,
     model: taskConfig.model,
     prompt,
@@ -90,7 +124,31 @@ router.post('/:userId/ai-assessment', async (c) => {
     env: c.env,
   });
 
-  return c.json({ assessment, generatedAt: new Date().toISOString() });
+  // Parse structured XAI response; fall back to prose if parsing fails
+  let xaiResult: Record<string, unknown>;
+  try {
+    const jsonMatch = rawResponse.match(/\{[\s\S]*\}/);
+    xaiResult = parseJsonWithRepair(jsonMatch ? jsonMatch[0] : rawResponse);
+  } catch {
+    // Graceful degradation: wrap prose in the expected shape
+    xaiResult = {
+      summary: rawResponse,
+      strengths: [],
+      weaknesses: [],
+      recommendation: '',
+      confidence: 'low',
+      confidenceReason: 'Structured parsing failed — prose assessment shown',
+    };
+  }
+
+  return c.json({
+    ...xaiResult,
+    // Legacy field kept for backwards compatibility with existing dashboard consumers
+    assessment: xaiResult.summary,
+    stats: { totalAnswered, correctCount, accuracyPct },
+    generatedAt: new Date().toISOString(),
+    modelUsed: taskConfig.model,
+  });
 });
 
 export default router;
