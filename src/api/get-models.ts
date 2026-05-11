@@ -19,7 +19,7 @@ interface ModelInfo {
 }
 
 interface GetModelsResponse {
-  provider: 'claude' | 'gemini' | 'openrouter';
+  provider: 'claude' | 'gemini' | 'openrouter' | 'openai' | 'mistral';
   models: ModelInfo[];
   source: 'live' | 'fallback';
 }
@@ -161,6 +161,74 @@ async function fetchOpenRouterModels(apiKey: string): Promise<ModelInfo[]> {
   return models;
 }
 
+/** Fetch live OpenAI models from OpenAI's API */
+async function fetchOpenAIModels(apiKey: string): Promise<ModelInfo[]> {
+  const response = await fetch('https://api.openai.com/v1/models', {
+    headers: { 'Authorization': `Bearer ${apiKey}` },
+  });
+  if (!response.ok) throw new Error(`OpenAI models API error: ${response.status}`);
+
+  const data: any = await response.json();
+  const models: ModelInfo[] = [];
+
+  // Only include chat-capable GPT models
+  const INCLUDE_PREFIXES = ['gpt-4', 'gpt-4o', 'o1', 'o3', 'o4'];
+  const EXCLUDE_PATTERNS = ['vision', 'audio', 'realtime', 'instruct', 'autocomplete', '0301', '0613'];
+
+  for (const m of data.data || []) {
+    const modelId: string = m.id || '';
+    if (!INCLUDE_PREFIXES.some(p => modelId.startsWith(p))) continue;
+    if (EXCLUDE_PATTERNS.some(p => modelId.toLowerCase().includes(p))) continue;
+
+    let tier: 'fast' | 'standard' | 'smart' = 'standard';
+    if (modelId.includes('mini') || modelId.includes('nano')) tier = 'fast';
+    if (modelId.startsWith('o1') || modelId.startsWith('o3') || modelId.startsWith('o4')) tier = 'smart';
+
+    models.push({
+      id: modelId,
+      name: modelId,
+      description: `OpenAI ${modelId}`,
+      tier,
+      contextWindow: 128000,
+    });
+  }
+
+  const tierOrder = { fast: 0, standard: 1, smart: 2 };
+  models.sort((a, b) => tierOrder[a.tier] - tierOrder[b.tier] || a.id.localeCompare(b.id));
+  return models;
+}
+
+/** Fetch live Mistral models from Mistral's API */
+async function fetchMistralModels(apiKey: string): Promise<ModelInfo[]> {
+  const response = await fetch('https://api.mistral.ai/v1/models', {
+    headers: { 'Authorization': `Bearer ${apiKey}` },
+  });
+  if (!response.ok) throw new Error(`Mistral models API error: ${response.status}`);
+
+  const data: any = await response.json();
+  const models: ModelInfo[] = [];
+
+  for (const m of data.data || []) {
+    const modelId: string = m.id || '';
+
+    let tier: 'fast' | 'standard' | 'smart' = 'standard';
+    if (modelId.includes('ministral') || modelId.includes('nemo') || modelId.includes('tiny')) tier = 'fast';
+    if (modelId.includes('large') || modelId.includes('magistral')) tier = 'smart';
+
+    models.push({
+      id: modelId,
+      name: m.name || modelId,
+      description: `Mistral ${m.name || modelId}`,
+      tier,
+      contextWindow: 128000,
+    });
+  }
+
+  const tierOrder = { fast: 0, standard: 1, smart: 2 };
+  models.sort((a, b) => tierOrder[a.tier] - tierOrder[b.tier] || a.id.localeCompare(b.id));
+  return models;
+}
+
 // ============================================================================
 // FALLBACK LISTS (used when no API key or live fetch fails)
 // ============================================================================
@@ -189,6 +257,20 @@ const FALLBACK_OPENROUTER: ModelInfo[] = [
   { id: 'meta-llama/llama-3.3-70b-instruct:free', name: 'Llama 3.3 70B (Free)', description: 'Free tier — Meta LLM', tier: 'standard', contextWindow: 128000 },
 ];
 
+const FALLBACK_OPENAI: ModelInfo[] = [
+  { id: 'gpt-4o-mini', name: 'GPT-4o Mini', description: 'Fast and affordable', tier: 'fast', contextWindow: 128000 },
+  { id: 'gpt-4o', name: 'GPT-4o', description: 'Balanced performance', tier: 'standard', contextWindow: 128000 },
+  { id: 'o4-mini', name: 'o4-mini', description: 'OpenAI reasoning model', tier: 'smart', contextWindow: 200000 },
+];
+
+const FALLBACK_MISTRAL: ModelInfo[] = [
+  { id: 'ministral-3b-latest', name: 'Ministral 3B', description: 'Ultra-fast small model', tier: 'fast', contextWindow: 128000 },
+  { id: 'ministral-8b-latest', name: 'Ministral 8B', description: 'Fast and efficient', tier: 'fast', contextWindow: 128000 },
+  { id: 'mistral-small-latest', name: 'Mistral Small', description: 'Balanced performance', tier: 'standard', contextWindow: 128000 },
+  { id: 'mistral-medium-latest', name: 'Mistral Medium', description: 'High quality', tier: 'standard', contextWindow: 128000 },
+  { id: 'mistral-large-latest', name: 'Mistral Large', description: 'Most capable Mistral model', tier: 'smart', contextWindow: 128000 },
+];
+
 // ============================================================================
 // MAIN HANDLER
 // ============================================================================
@@ -196,14 +278,15 @@ const FALLBACK_OPENROUTER: ModelInfo[] = [
 export async function handleGetModels(c: Context): Promise<Response> {
   try {
     const query = c.req.query();
-    const provider = query['provider'] as 'claude' | 'gemini' | 'openrouter';
+    const provider = query['provider'] as 'claude' | 'gemini' | 'openrouter' | 'openai' | 'mistral';
     const apiKey = query['apiKey'];
 
-    if (!provider || !['claude', 'gemini', 'openrouter'].includes(provider)) {
-      return c.json({ error: 'Invalid provider. Must be "claude", "gemini", or "openrouter"' }, 400);
+    const VALID_PROVIDERS = ['claude', 'gemini', 'openrouter', 'openai', 'mistral'];
+    if (!provider || !VALID_PROVIDERS.includes(provider)) {
+      return c.json({ error: `Invalid provider. Must be one of: ${VALID_PROVIDERS.join(', ')}` }, 400);
     }
 
-    let models: ModelInfo[];
+    let models: ModelInfo[] = [];
     let source: 'live' | 'fallback' = 'fallback';
 
     // If an API key is provided, attempt a live fetch
@@ -219,19 +302,36 @@ export async function handleGetModels(c: Context): Promise<Response> {
           case 'openrouter':
             models = await fetchOpenRouterModels(apiKey);
             break;
+          case 'openai':
+            models = await fetchOpenAIModels(apiKey);
+            break;
+          case 'mistral':
+            models = await fetchMistralModels(apiKey);
+            break;
+          default:
+            models = FALLBACK_GEMINI;
+            break;
         }
         source = 'live';
         console.log(`[get-models] Live fetch OK: ${models!.length} ${provider} models`);
       } catch (liveError) {
         console.warn(`[get-models] Live fetch failed for ${provider}, using fallback:`, liveError);
-        models = provider === 'gemini' ? FALLBACK_GEMINI : provider === 'claude' ? FALLBACK_CLAUDE : FALLBACK_OPENROUTER;
       }
-    } else {
-      // No key — return fallback list immediately
-      models = provider === 'gemini' ? FALLBACK_GEMINI : provider === 'claude' ? FALLBACK_CLAUDE : FALLBACK_OPENROUTER;
     }
 
-    const response: GetModelsResponse = { provider, models: models!, source };
+    // Fallback if live fetch wasn't attempted or failed
+    if (source === 'fallback' || !models) {
+      switch (provider) {
+        case 'gemini': models = FALLBACK_GEMINI; break;
+        case 'claude': models = FALLBACK_CLAUDE; break;
+        case 'openrouter': models = FALLBACK_OPENROUTER; break;
+        case 'openai': models = FALLBACK_OPENAI; break;
+        case 'mistral': models = FALLBACK_MISTRAL; break;
+        default: models = FALLBACK_GEMINI; break;
+      }
+    }
+
+    const response: GetModelsResponse = { provider, models, source };
     return c.json(response, 200);
 
   } catch (error) {

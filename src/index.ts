@@ -33,6 +33,9 @@ export interface Env {
 	// AI Provider API Keys (set via wrangler secret)
 	GEMINI_API_KEY: string;
 	ANTHROPIC_API_KEY: string;
+	MISTRAL_API_KEY?: string;
+	OPENAI_API_KEY?: string;
+	OPENROUTER_API_KEY?: string;
 	// Firebase Service Account (set via wrangler secret)
 	FIREBASE_SERVICE_ACCOUNT: string;
 	FIREBASE_API_KEY: string;

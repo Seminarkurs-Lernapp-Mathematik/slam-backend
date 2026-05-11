@@ -1,5 +1,5 @@
 {
-  "version": "2.2.0",
+  "version": "3.0.0",
   "providers": {
     "gemini": {
       "name": "Google Gemini",
@@ -10,6 +10,21 @@
       "name": "Anthropic Claude",
       "endpoint": "https://api.anthropic.com/v1/messages",
       "envKey": "ANTHROPIC_API_KEY"
+    },
+    "openai": {
+      "name": "OpenAI",
+      "endpoint": "https://api.openai.com/v1/chat/completions",
+      "envKey": "OPENAI_API_KEY"
+    },
+    "mistral": {
+      "name": "Mistral AI",
+      "endpoint": "https://api.mistral.ai/v1/chat/completions",
+      "envKey": "MISTRAL_API_KEY"
+    },
+    "openrouter": {
+      "name": "OpenRouter",
+      "endpoint": "https://openrouter.ai/api/v1/chat/completions",
+      "envKey": "OPENROUTER_API_KEY"
     }
   },
   "tasks": {
