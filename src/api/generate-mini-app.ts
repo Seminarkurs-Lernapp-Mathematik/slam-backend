@@ -16,8 +16,18 @@ import { callAI, getTaskModelConfig } from '../utils/callAI';
 // TYPE DEFINITIONS
 // ============================================================================
 
+interface ThemeColors {
+  primary?: string;       // e.g. "#FF7A3B"
+  primaryDark?: string;   // darker shade for hover / borders
+  primaryLight?: string;  // very light tint for surfaces
+  bg?: string;            // page background
+  surface?: string;       // card background
+  text?: string;          // body text
+}
+
 interface GenerateMiniAppRequest {
   description: string;
+  themeColors?: ThemeColors;
 }
 
 interface GeneratedApp {
@@ -55,48 +65,81 @@ function determineComplexity(description: string): 'simple' | 'medium' | 'advanc
   return 'medium';
 }
 
-/** Uniform design system embedded in every generated app */
-const DESIGN_SYSTEM_CSS = `
+
+/**
+ * Derive a slightly darker shade of a hex color for hover states.
+ * Works for 6-digit hex strings like "#FF7A3B".
+ */
+function darkenHex(hex: string, amount = 30): string {
+  const clean = hex.replace('#', '');
+  const r = Math.max(0, parseInt(clean.slice(0, 2), 16) - amount);
+  const g = Math.max(0, parseInt(clean.slice(2, 4), 16) - amount);
+  const b = Math.max(0, parseInt(clean.slice(4, 6), 16) - amount);
+  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+}
+
+/** Convert hex to rgba string with given opacity (0-1) */
+function hexToRgba(hex: string, alpha: number): string {
+  const clean = hex.replace('#', '');
+  const r = parseInt(clean.slice(0, 2), 16);
+  const g = parseInt(clean.slice(2, 4), 16);
+  const b = parseInt(clean.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+/**
+ * Build the CSS :root block with theme overrides applied.
+ * Falls back to the default dark design for any missing field.
+ */
+function buildDesignSystemCSS(theme?: ThemeColors): string {
+  const p    = theme?.primary     ?? '#ff7a3b';
+  const pD   = theme?.primaryDark  ?? darkenHex(p, 30);
+  const pL   = theme?.primaryLight ?? hexToRgba(p, 0.12);
+  const bg   = theme?.bg           ?? '#0f0a0d';
+  const surf = theme?.surface      ?? '#22161c';
+  const txt  = theme?.text         ?? '#fff4ec';
+
+  return `
 /* ===== SLAM DESIGN SYSTEM ===== */
 :root {
-  --c-primary: #5c35cc;
-  --c-primary-light: #ede9fb;
-  --c-primary-dark: #3d1fa8;
+  --c-primary: ${p};
+  --c-primary-light: ${pL};
+  --c-primary-dark: ${pD};
   --c-success: #10b981;
   --c-error: #ef4444;
   --c-warning: #f59e0b;
-  --c-surface: #ffffff;
-  --c-bg: #f5f5f5;
-  --c-border: #e0e0e0;
-  --c-text: #1a1a2e;
-  --c-text-muted: #64748b;
+  --c-surface: ${surf};
+  --c-bg: ${bg};
+  --c-border: rgba(255,255,255,0.1);
+  --c-text: ${txt};
+  --c-text-muted: rgba(255,255,255,0.45);
   --r-sm: 8px; --r-md: 12px; --r-lg: 16px;
-  --sh-sm: 0 1px 3px rgba(0,0,0,.08);
-  --sh-md: 0 4px 6px rgba(0,0,0,.07),0 2px 4px rgba(0,0,0,.06);
+  --sh-sm: 0 1px 3px rgba(0,0,0,.18);
+  --sh-md: 0 4px 6px rgba(0,0,0,.22),0 2px 4px rgba(0,0,0,.18);
   --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:var(--font);background:var(--c-bg);color:var(--c-text);font-size:15px;line-height:1.5;min-height:100vh;padding:16px}
 h1{font-size:22px;font-weight:800;color:var(--c-text);margin-bottom:4px}
 h2{font-size:17px;font-weight:700;margin-bottom:8px}
-.card{background:var(--c-surface);border-radius:var(--r-lg);box-shadow:var(--sh-md);padding:20px;margin-bottom:16px}
+.card{background:var(--c-surface);border:1px solid var(--c-border);border-radius:var(--r-lg);box-shadow:var(--sh-md);padding:20px;margin-bottom:16px}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:10px 20px;border-radius:var(--r-md);font-family:var(--font);font-size:14px;font-weight:600;cursor:pointer;border:none;transition:all .15s ease;outline:none;user-select:none}
 .btn-primary{background:var(--c-primary);color:#fff}
 .btn-primary:hover{background:var(--c-primary-dark);transform:translateY(-1px);box-shadow:var(--sh-md)}
 .btn-primary:active{transform:translateY(0)}
-.btn-primary:disabled{background:#c4b5e8;cursor:not-allowed;transform:none}
+.btn-primary:disabled{opacity:.5;cursor:not-allowed;transform:none}
 .btn-secondary{background:var(--c-primary-light);color:var(--c-primary)}
-.btn-secondary:hover{background:#d6cef5}
+.btn-secondary:hover{opacity:.85}
 .btn-outline{background:transparent;color:var(--c-primary);border:2px solid var(--c-primary)}
 .btn-outline:hover{background:var(--c-primary-light)}
 label,.label{display:block;font-size:12px;font-weight:700;color:var(--c-text-muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em}
 input,select,textarea{width:100%;padding:10px 14px;border:1.5px solid var(--c-border);border-radius:var(--r-sm);font-family:var(--font);font-size:14px;color:var(--c-text);background:var(--c-surface);transition:border-color .15s;outline:none}
 input:focus,select:focus,textarea:focus{border-color:var(--c-primary)}
 .form-group{margin-bottom:14px}
-.result-box{background:var(--c-primary-light);border-left:4px solid var(--c-primary);border-radius:var(--r-sm);padding:14px 16px;font-size:16px;font-weight:700;color:var(--c-primary-dark);margin-top:12px}
-.success-box{background:#d1fae5;border-left:4px solid var(--c-success);border-radius:var(--r-sm);padding:12px 16px;color:#065f46;font-weight:600}
-.error-box{background:#fee2e2;border-left:4px solid var(--c-error);border-radius:var(--r-sm);padding:12px 16px;color:#991b1b}
-.info-box{background:#e0f2fe;border-left:4px solid #0284c7;border-radius:var(--r-sm);padding:12px 16px;color:#0c4a6e}
+.result-box{background:var(--c-primary-light);border-left:4px solid var(--c-primary);border-radius:var(--r-sm);padding:14px 16px;font-size:16px;font-weight:700;color:var(--c-text);margin-top:12px}
+.success-box{background:rgba(16,185,129,.15);border-left:4px solid var(--c-success);border-radius:var(--r-sm);padding:12px 16px;color:#4dd490;font-weight:600}
+.error-box{background:rgba(239,68,68,.15);border-left:4px solid var(--c-error);border-radius:var(--r-sm);padding:12px 16px;color:#ff6b7a}
+.info-box{background:rgba(59,130,246,.12);border-left:4px solid #3b82f6;border-radius:var(--r-sm);padding:12px 16px;color:#60a5fa}
 .grid{display:grid;gap:12px}
 .grid-2{grid-template-columns:1fr 1fr}
 .flex{display:flex;gap:10px;align-items:center}
@@ -106,8 +149,11 @@ input:focus,select:focus,textarea:focus{border-color:var(--c-primary)}
 .divider{height:1px;background:var(--c-border);margin:16px 0}
 @media(max-width:480px){.grid-2{grid-template-columns:1fr}}
 `;
+}
 
-function buildPrompt(description: string, complexity: string): string {
+function buildPrompt(description: string, complexity: string, theme?: ThemeColors): string {
+  const designCSS = buildDesignSystemCSS(theme);
+
   return `Du bist ein Experte für interaktive mathematische Web-Anwendungen.
 
 Erstelle eine vollständige, eigenständige HTML-Mini-App basierend auf dieser Beschreibung:
@@ -118,7 +164,7 @@ KOMPLEXITÄTSSTUFE: ${complexity}
 ━━━ PFLICHT: SLAM DESIGN SYSTEM ━━━
 Füge dieses CSS WÖRTLICH und VOLLSTÄNDIG in den <style>-Block ein:
 
-${DESIGN_SYSTEM_CSS}
+${designCSS}
 
 ━━━ ANFORDERUNGEN ━━━
 1. Nutze ausschließlich die CSS-Variablen (--c-primary, --c-bg etc.) und Klassen (.card, .btn-primary, .result-box, .form-group usw.) aus dem Design System
@@ -199,7 +245,7 @@ export async function handleGenerateMiniApp(c: Context<{ Bindings: Env }>) {
   try {
     const body = await c.req.json<Partial<GenerateMiniAppRequest>>();
 
-    const { description } = body;
+    const { description, themeColors } = body;
     if (!description) {
       throw new APIError('Missing required field: description', 400);
     }
@@ -208,13 +254,15 @@ export async function handleGenerateMiniApp(c: Context<{ Bindings: Env }>) {
 
     console.log('[generate-mini-app] Request:', {
       complexity,
+      hasTheme: !!themeColors,
+      primaryColor: themeColors?.primary ?? 'default',
       description: description.substring(0, 50) + '...',
     });
 
     const taskConfig = await getTaskModelConfig('generateMiniApp');
     console.log(`[Model Router] Using model ${taskConfig.model} from task config`);
 
-    const prompt = buildPrompt(description, complexity);
+    const prompt = buildPrompt(description, complexity, themeColors);
 
     const responseText = await callAI({
       provider: taskConfig.provider,
