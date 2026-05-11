@@ -11,6 +11,7 @@ import type { Env } from '../index';
 import { APIError } from '../types';
 import { parseJsonWithRepair } from '../utils/repairJson';
 import { callAI, getTaskModelConfig } from '../utils/callAI';
+import { sanitizePII } from '../utils/sanitizePII';
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -113,21 +114,28 @@ export async function handleCustomHint(c: Context<{ Bindings: Env }>) {
       throw new APIError('Missing required field: question', 400);
     }
 
-    const isChatMode = chatHistory && chatHistory.length > 0;
+    // Sanitize user-supplied text before embedding in AI prompts
+    const safeUserAnswer = sanitizePII(userAnswer);
+    const safeChatHistory = chatHistory?.map((m) => ({
+      ...m,
+      content: sanitizePII(m.content),
+    }));
+
+    const isChatMode = safeChatHistory && safeChatHistory.length > 0;
     console.log(
-      `[custom-hint] Request: hintsUsed=${hintsUsed || 0}, hasUserAnswer=${!!userAnswer}, chatMode=${isChatMode}, turns=${chatHistory?.length ?? 0}`,
+      `[custom-hint] Request: hintsUsed=${hintsUsed || 0}, hasUserAnswer=${!!safeUserAnswer}, chatMode=${isChatMode}, turns=${safeChatHistory?.length ?? 0}`,
     );
 
     const taskConfig = await getTaskModelConfig('customHint');
 
     const prompt = buildHintPrompt(
       question,
-      userAnswer,
+      safeUserAnswer,
       hintsUsed,
       solution,
       topic,
       difficulty,
-      chatHistory,
+      safeChatHistory,
     );
 
     const responseText = await callAI({

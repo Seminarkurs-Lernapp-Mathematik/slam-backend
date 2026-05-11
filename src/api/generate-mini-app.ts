@@ -11,6 +11,7 @@ import type { Env } from '../index';
 import { APIError } from '../types';
 import { parseJsonWithRepair } from '../utils/repairJson';
 import { callAI, getTaskModelConfig } from '../utils/callAI';
+import { sanitizePII } from '../utils/sanitizePII';
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -262,7 +263,8 @@ export async function handleGenerateMiniApp(c: Context<{ Bindings: Env }>) {
     const taskConfig = await getTaskModelConfig('generateMiniApp');
     console.log(`[Model Router] Using model ${taskConfig.model} from task config`);
 
-    const prompt = buildPrompt(description, complexity, themeColors);
+    const safeDescription = sanitizePII(description);
+    const prompt = buildPrompt(safeDescription, complexity, themeColors);
 
     const responseText = await callAI({
       provider: taskConfig.provider,
