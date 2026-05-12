@@ -76,7 +76,7 @@
     "analyzeImage": {
       "description": "Analyze uploaded images for math problems",
       "provider": "gemini",
-      "model": "gemini-3.1-pro",
+      "model": "gemini-pro-latest",
       "temperature": 0.2,
       "timeout": 45000,
       "maxTokens": 4000,
@@ -94,7 +94,7 @@
     "manageMemories": {
       "description": "Spaced-Repetition SM-2 logic updates",
       "provider": "gemini",
-      "model": "gemini-3.2-flash",
+      "model": "gemini-flash-lite-latest",
       "temperature": 0.3,
       "timeout": 20000,
       "maxTokens": 2000,
@@ -133,5 +133,7 @@
     "allowFallbackOnError": true,
     "fallbackProvider": "gemini",
     "fallbackModel": "gemini-3.2-flash"
+  }
+}h-latest"
   }
 }
