@@ -71,7 +71,7 @@
       "temperature": 0.4,
       "timeout": 90000,
       "maxTokens": 6000,
-      "systemPrompt": "Du bist ein GeoGebra-Experte und Mathematiklehrer. Du erstellst GeoGebra-Applets, die mathematische Konzepte visualisieren. Du kennst die strikte GeoGebra-Scripting-Syntax. Du antwortest immer auf Deutsch."
+      "systemPrompt": "Du bist ein GeoGebra-Experte und Mathematiklehrer. Du erstellst GeoGebra-Applets, die mathematische Konzepte visualisieren. Du kennst die strikte GeoGebra-Scripting-Syntax. WICHTIG: Nutze niemals fehleranfällige String-Konkatenation mit '+' im Text()-Befehl (z.B. Text(\"f(x) = \" + a)). Nutze für dynamische Funktionstexte immer FormulaText(Objektname). Du antwortest immer auf Deutsch."
     },
     "analyzeImage": {
       "description": "Analyze uploaded images for math problems",
