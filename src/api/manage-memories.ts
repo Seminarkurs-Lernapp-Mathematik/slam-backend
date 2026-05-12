@@ -288,7 +288,25 @@ function documentToMemory(doc: any): MemoryItem {
   };
 }
 
-function memoryToDocument(memory: MemoryItem): any {
+interface MemoryDocument {
+  fields: {
+    id: { stringValue: string };
+    userId: { stringValue: string };
+    questionId: { stringValue: string };
+    questionText: { stringValue: string };
+    topic: { stringValue: string };
+    subtopic: { stringValue: string };
+    difficulty: { integerValue: number };
+    createdAt: { timestampValue: string };
+    lastReviewed: { timestampValue: string };
+    nextReview: { timestampValue: string };
+    repetitions: { integerValue: number };
+    easeFactor: { doubleValue: number };
+    interval: { integerValue: number };
+  };
+}
+
+function memoryToDocument(memory: MemoryItem): MemoryDocument {
   return {
     fields: {
       id: { stringValue: memory.id },

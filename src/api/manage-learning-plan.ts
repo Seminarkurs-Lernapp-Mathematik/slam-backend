@@ -240,7 +240,42 @@ function documentToLearningPlan(doc: any): LearningPlan {
   };
 }
 
-function learningPlanToDocument(plan: LearningPlan): any {
+interface FirestoreTopicFields {
+  leitidee: { stringValue: string };
+  thema: { stringValue: string };
+  unterthema: { stringValue: string };
+  order: { integerValue: number };
+  status: { stringValue: string };
+  priority: { stringValue: string };
+  addedAt: { timestampValue: string };
+  completedAt?: { timestampValue: string };
+}
+
+interface LearningPlanDocument {
+  fields: {
+    id: { stringValue: string };
+    userId: { stringValue: string };
+    name: { stringValue: string };
+    topics: { arrayValue: { values: Array<{ mapValue: { fields: FirestoreTopicFields } }> } };
+    status: { stringValue: string };
+    createdAt: { timestampValue: string };
+    updatedAt: { timestampValue: string };
+    targetCompletionDate?: { timestampValue: string };
+    progress: {
+      mapValue: {
+        fields: {
+          totalTopics: { integerValue: number };
+          completedTopics: { integerValue: number };
+          totalQuestions: { integerValue: number };
+          completedQuestions: { integerValue: number };
+          accuracy: { doubleValue: number };
+        };
+      };
+    };
+  };
+}
+
+function learningPlanToDocument(plan: LearningPlan): LearningPlanDocument {
   return {
     fields: {
       id: { stringValue: plan.id },

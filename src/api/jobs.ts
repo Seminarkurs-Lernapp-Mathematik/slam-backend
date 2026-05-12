@@ -148,6 +148,8 @@ async function runMiniAppGeneration(
       status: 'error',
       updatedAt: now(),
       error: err instanceof Error ? err.message : 'Unknown error',
-    }).catch(() => {});
+    }).catch((patchErr) => {
+      console.error('[jobs] Failed to update job error status in Firestore:', patchErr);
+    });
   }
 }
