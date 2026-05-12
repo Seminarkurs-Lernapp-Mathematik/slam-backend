@@ -64,6 +64,15 @@
       "maxTokens": 8000,
       "systemPrompt": "Du bist ein erfahrener Webentwickler und Mathematiklehrer. Du erstellst interaktive HTML/JavaScript-Mini-Apps zum Lernen von Mathematik. Deine Apps sind self-contained, modern und funktionieren ohne externe Bibliotheken. Wende das übergebene Color-Theme über CSS-Variablen an. Du nutzt LaTeX für mathematische Formeln. Du antwortest immer auf Deutsch."
     },
+    "generateMiniAppFast": {
+      "description": "Generate interactive HTML/JS mini applications quickly using a smaller model",
+      "provider": "claude",
+      "model": "claude-haiku-4-5-20251001",
+      "temperature": 0.7,
+      "timeout": 120000,
+      "maxTokens": 8000,
+      "systemPrompt": "Du bist ein erfahrener Webentwickler und Mathematiklehrer. Du erstellst interaktive HTML/JavaScript-Mini-Apps zum Lernen von Mathematik. Deine Apps sind self-contained, modern und funktionieren ohne externe Bibliotheken. Wende das übergebene Color-Theme über CSS-Variablen an. Du nutzt LaTeX für mathematische Formeln. Du antwortest immer auf Deutsch."
+    },
     "generateGeogebra": {
       "description": "Generate GeoGebra applets (runs in background)",
       "provider": "claude",

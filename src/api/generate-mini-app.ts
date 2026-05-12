@@ -246,7 +246,7 @@ export async function handleGenerateMiniApp(c: Context<{ Bindings: Env }>) {
   try {
     const body = await c.req.json<Partial<GenerateMiniAppRequest>>();
 
-    const { description, themeColors } = body;
+    const { description, themeColors, isFastMode } = body;
     if (!description) {
       throw new APIError('Missing required field: description', 400);
     }
@@ -256,11 +256,13 @@ export async function handleGenerateMiniApp(c: Context<{ Bindings: Env }>) {
     console.log('[generate-mini-app] Request:', {
       complexity,
       hasTheme: !!themeColors,
+      isFastMode: !!isFastMode,
       primaryColor: themeColors?.primary ?? 'default',
       description: description.substring(0, 50) + '...',
     });
 
-    const taskConfig = await getTaskModelConfig('generateMiniApp');
+    const taskName = isFastMode ? 'generateMiniAppFast' : 'generateMiniApp';
+    const taskConfig = await getTaskModelConfig(taskName as any);
     console.log(`[Model Router] Using model ${taskConfig.model} from task config`);
 
     const safeDescription = sanitizePII(description);
