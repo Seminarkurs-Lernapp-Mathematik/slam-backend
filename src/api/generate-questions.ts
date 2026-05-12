@@ -114,7 +114,9 @@ PFLICHTFELDER FÜR JEDE FRAGE:
 
 Nutze LaTeX für mathematische Formeln: $...$
 WICHTIG FÜR LATEX IN JSON: Verwende IMMER doppelte Backslashes für LaTeX-Befehle in JSON-Strings!
-Beispiele: $\\frac{1}{2}$ statt $\frac{1}{2}$, $\\sqrt{x}$ statt $\sqrt{x}$, $\\int_0^1$ statt $\int_0^1$.
+Beispiele: $\\\\frac{1}{2}$ statt $\\frac{1}{2}$, $\\\\sqrt{x}$ statt $\\sqrt{x}$, $\\\\int_0^1$ statt $\\int_0^1$.
+
+WICHTIG ZUR JSON-SYNTAX: Verwende NIEMALS unmaskierte doppelte Anführungszeichen innerhalb von JSON-Strings! Schreibe "die sogenannte \\"Nullstelle\\"" oder nutze einfache Anführungszeichen "die 'Nullstelle'". Unmaskierte Anführungszeichen zerstören das JSON-Format!
 
 WICHTIG: Antworte NUR mit einem JSON-Objekt (kein zusätzlicher Text, kein Markdown-Code-Block).
 
