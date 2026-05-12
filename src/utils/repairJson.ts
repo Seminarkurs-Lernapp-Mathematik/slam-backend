@@ -83,8 +83,8 @@ function recoverTruncatedQuestionsJson(text: string): string | null {
       depth++;
     } else if (ch === '}' || ch === ']') {
       depth--;
-      // A closing `}` at depth 1 means we just closed a top-level array element
-      if (ch === '}' && depth === 1) {
+      // A closing `}` at depth 2 means we just closed a top-level array element
+      if (ch === '}' && depth === 2) {
         lastQuestionEnd = i;
       }
     }

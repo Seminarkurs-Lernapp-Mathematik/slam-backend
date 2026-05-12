@@ -407,8 +407,8 @@ export async function handleGenerateQuestions(c: Context<{ Bindings: Env }>) {
 
     // Validate required fields
     const { userId, topics, userContext } = body;
-    if (!userId || !topics || !userContext) {
-      throw new APIError('Missing required fields: userId, topics, userContext', 400);
+    if (!userId || !topics || topics.length === 0 || !userContext) {
+      throw new APIError('Missing required fields: userId, topics (non-empty), userContext', 400);
     }
 
     // Extract parameters with defaults
@@ -461,22 +461,30 @@ export async function handleGenerateQuestions(c: Context<{ Bindings: Env }>) {
               const cacheAge = Date.now() - new Date(cachedAt).getTime();
               const sevenDays = 7 * 24 * 60 * 60 * 1000;
               if (cacheAge < sevenDays) {
+                const validatedCached = cachedQuestions
+                  .map((q: any, index: number) => validateAndNormalizeQuestion(q, index))
+                  .filter((q: any) => q !== null);
+
                 console.log(
-                  `[Cache Hit] Returning ${cachedQuestions.length} cached questions for key: ${cacheKey}`
+                  `[Cache Hit] Returning ${validatedCached.length} cached questions for key: ${cacheKey}`
                 );
 
-                const sessionId = `session_${Date.now()}_${userId.substring(0, 8)}`;
-                return c.json({
-                  success: true,
-                  sessionId,
-                  learningPlanItemId,
-                  topics,
-                  userContext,
-                  questions: cachedQuestions,
-                  totalQuestions: cachedQuestions.length,
-                  fromCache: true,
-                  cacheKey,
-                });
+                if (validatedCached.length === 0) {
+                  console.warn('[Cache] All cached questions failed validation, regenerating');
+                } else {
+                  const sessionId = `session_${Date.now()}_${userId.substring(0, 8)}`;
+                  return c.json({
+                    success: true,
+                    sessionId,
+                    learningPlanItemId,
+                    topics,
+                    userContext,
+                    questions: validatedCached,
+                    totalQuestions: validatedCached.length,
+                    fromCache: true,
+                    cacheKey,
+                  });
+                }
               }
             }
           }
