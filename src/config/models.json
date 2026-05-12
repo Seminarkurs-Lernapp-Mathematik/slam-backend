@@ -143,13 +143,4 @@
     "fallbackProvider": "gemini",
     "fallbackModel": "gemini-flash-latest"
   }
-}r auf Deutsch."
-    }
-  },
-  "features": {
-    "logModelUsage": true,
-    "allowFallbackOnError": true,
-    "fallbackProvider": "gemini",
-    "fallbackModel": "gemini-flash-latest"
-  }
 }
