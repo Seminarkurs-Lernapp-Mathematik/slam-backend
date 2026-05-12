@@ -29,6 +29,7 @@ export interface ThemeColors {
 interface GenerateMiniAppRequest {
   description: string;
   themeColors?: ThemeColors;
+  isFastMode?: boolean;
 }
 
 interface GeneratedApp {
