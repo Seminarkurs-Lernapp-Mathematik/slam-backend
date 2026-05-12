@@ -62,6 +62,7 @@ export async function handleGenerateMiniAppAsync(c: Context<{ Bindings: Env }>) 
   const body = await c.req.json<{
     description?: string;
     themeColors?: ThemeColors;
+    isFastMode?: boolean;
   }>();
 
   if (!body.description) {
@@ -84,7 +85,7 @@ export async function handleGenerateMiniAppAsync(c: Context<{ Bindings: Env }>) 
 
     // Run AI generation in the background (Cloudflare waitUntil)
     // The response (202) is returned immediately below.
-    const bgWork = runMiniAppGeneration(c.env, jobId, body.description, body.themeColors);
+    const bgWork = runMiniAppGeneration(c.env, jobId, body.description, body.themeColors, body.isFastMode);
     c.executionCtx.waitUntil(bgWork);
 
     return c.json({ success: true, jobId, status: 'pending' }, 202);
@@ -99,6 +100,7 @@ async function runMiniAppGeneration(
   jobId: string,
   description: string,
   themeColors?: ThemeColors,
+  isFastMode?: boolean,
 ): Promise<void> {
   const { projectId, accessToken } = await getFirebaseConfig(env);
   const now = () => new Date().toISOString();
@@ -114,7 +116,8 @@ async function runMiniAppGeneration(
     const complexity = description.length < 50 ? 'simple' : description.length < 150 ? 'medium' : 'advanced';
     const prompt = buildPrompt(safeDescription, complexity, themeColors);
 
-    const taskConfig = await getTaskModelConfig('generateMiniApp');
+    const taskName = isFastMode ? 'generateMiniAppFast' : 'generateMiniApp';
+    const taskConfig = await getTaskModelConfig(taskName as any);
     const responseText = await callAI({
       provider: taskConfig.provider,
       model: taskConfig.model,
