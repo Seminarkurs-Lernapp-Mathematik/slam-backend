@@ -73,21 +73,21 @@ VERFÜGBARE GEOGEBRA-BEFEHLE:
 - Styling: SetColor, SetLineThickness, SetPointSize, SetVisibleInView
 - Ansicht: ZoomIn, Pan, ShowAxes, ShowGrid
 
-BEFEHLS-SYNTAX:
-- Punkte: A = (1, 2) oder A = (0, 0)
+BEFEHLS-SYNTAX & HÄUFIGE FEHLER (WICHTIG!):
+- Punkte: A = (1, 2)
 - Funktionen: f(x) = x^2 + 3*x - 2
-- Geraden: g: y = 2*x + 1
-- Kreise: c = Circle(A, 2)
-- Slider: a = Slider(0, 10)
-- Farben: SetColor(f, "red") oder RGB-Werte
+- Slider: a = Slider(0, 10, 0.1)
+- Nullstelle (Root): Erwartet eine FUNKTION, keinen Punkt! KORREKT: Nullstelle(f). FALSCH: Nullstelle(A).
+- Schnittpunkt (Intersect): KORREKT: Intersect(f, g).
+- FormulaText (FormelText): Erwartet ein OBJEKT (Funktion, Variable), KEINE Koordinaten! KORREKT: FormulaText(f). FALSCH: FormulaText((3, 5)).
+- Text mit Werten: Nutze NIEMALS String-Konkatenation (+) in Text()! KORREKT: Text(FormulaText(a), (1,1))
 
 WICHTIGE REGELN:
 1. Verwende nur gültige GeoGebra-Syntax
 2. Erstelle sinnvolle Achsen-Skalierung (ZoomIn wenn nötig)
-3. Füge Beschriftungen hinzu (Text-Befehl)
-4. Verwende unterschiedliche Farben für verschiedene Objekte
-5. Füge Slider für interaktive Parameter ein (wo sinnvoll)
-6. Begrenze auf maximal 20 Befehle für Übersichtlichkeit
+3. Verwende unterschiedliche Farben für verschiedene Objekte
+4. Füge Slider für interaktive Parameter ein (wo sinnvoll)
+5. Begrenze auf maximal 20 Befehle für Übersichtlichkeit
 
 ANTWORTFORMAT - JSON:
 {
