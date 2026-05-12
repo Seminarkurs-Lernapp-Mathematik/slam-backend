@@ -1,3 +1,5 @@
+import { jsonrepair } from 'jsonrepair';
+
 /**
  * repairJson.ts
  *
@@ -17,18 +19,8 @@
  */
 
 /**
- * Remove trailing commas inside JSON arrays and objects.
- * Handles nested structures correctly by only removing commas
- * immediately before ] or }.
- */
-function removeTrailingCommas(text: string): string {
-  // Remove comma(s) followed only by whitespace before ] or }
-  return text.replace(/,(\s*[}\]])/g, '$1');
-}
-
-/**
  * Repairs raw AI response text so it can be parsed with JSON.parse.
- * Call this BEFORE JSON.parse.
+ * Call this BEFORE jsonrepair.
  */
 export function repairJsonEscapes(text: string): string {
   let result = text;
@@ -60,18 +52,15 @@ export function repairJsonEscapes(text: string): string {
 
 /**
  * Parses a JSON string with full repair pipeline applied unconditionally:
- *   1. Remove trailing commas
- *   2. Fix invalid/misused backslash escapes
+ *   1. Fix invalid/misused backslash escapes
+ *   2. Use jsonrepair to fix trailing commas, unescaped quotes, etc.
  *   3. JSON.parse
- *
- * IMPORTANT: repair must run BEFORE JSON.parse, not as a fallback.
- * Sequences like \frac are "successfully" parsed by JSON.parse as a form-feed
- * character + "rac" — no error thrown, but the data is silently corrupted.
  */
 export function parseJsonWithRepair(text: string): any {
   try {
-    const repaired = repairJsonEscapes(removeTrailingCommas(text));
-    return JSON.parse(repaired);
+    const customRepaired = repairJsonEscapes(text);
+    const fullyRepaired = jsonrepair(customRepaired);
+    return JSON.parse(fullyRepaired);
   } catch (err) {
     throw new Error(
       `Failed to parse JSON: ${err instanceof Error ? err.message : String(err)}`
