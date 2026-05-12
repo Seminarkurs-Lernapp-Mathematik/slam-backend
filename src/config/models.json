@@ -40,7 +40,7 @@
     "evaluateAnswer": {
       "description": "Real-time evaluation of student text/math inputs",
       "provider": "gemini",
-      "model": "gemini-3.2-flash",
+      "model": "gemini-flash-latest",
       "temperature": 0.3,
       "timeout": 20000,
       "maxTokens": 2000,
@@ -49,7 +49,7 @@
     "customHint": {
       "description": "Generate progressive hints without giving the solution",
       "provider": "gemini",
-      "model": "gemini-3.2-flash",
+      "model": "gemini-flash-latest",
       "temperature": 0.6,
       "timeout": 20000,
       "maxTokens": 2000,
@@ -85,7 +85,7 @@
     "updateAutoMode": {
       "description": "Adjust AI difficulty based on performance metrics",
       "provider": "gemini",
-      "model": "gemini-3.2-flash",
+      "model": "gemini-flash-latest",
       "temperature": 0.4,
       "timeout": 20000,
       "maxTokens": 2000,
@@ -112,7 +112,7 @@
     "collaborativeCanvas": {
       "description": "Real-time whiteboard AI assistance",
       "provider": "gemini",
-      "model": "gemini-3.2-flash",
+      "model": "gemini-flash-latest",
       "temperature": 0.6,
       "timeout": 30000,
       "maxTokens": 4000,
@@ -132,6 +132,6 @@
     "logModelUsage": true,
     "allowFallbackOnError": true,
     "fallbackProvider": "gemini",
-    "fallbackModel": "gemini-3.2-flash"
+    "fallbackModel": "gemini-flash-latest"
   }
 }
