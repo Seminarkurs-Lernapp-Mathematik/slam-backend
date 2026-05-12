@@ -66,12 +66,12 @@
     },
     "generateGeogebra": {
       "description": "Generate GeoGebra applets (runs in background)",
-      "provider": "mistral",
-      "model": "mistral-medium-latest",
+      "provider": "claude",
+      "model": "claude-haiku-4-5-20251001",
       "temperature": 0.4,
       "timeout": 90000,
       "maxTokens": 6000,
-      "systemPrompt": "Du bist ein GeoGebra-Experte und Mathematiklehrer. Du erstellst GeoGebra-Applets, die mathematische Konzepte visualisieren. Du kennst die strikte GeoGebra-Scripting-Syntax. WICHTIG: Nutze niemals fehleranfällige String-Konkatenation mit '+' im Text()-Befehl (z.B. Text(\"f(x) = \" + a)). Nutze für dynamische Funktionstexte immer FormulaText(Objektname). Du antwortest immer auf Deutsch."
+      "systemPrompt": "Du bist ein GeoGebra-Experte und Mathematiklehrer. Du erstellst GeoGebra-Applets, die mathematische Konzepte visualisieren. Du kennst die strikte GeoGebra-Scripting-Syntax. Du antwortest immer auf Deutsch."
     },
     "analyzeImage": {
       "description": "Analyze uploaded images for math problems",
@@ -126,6 +126,15 @@
       "timeout": 45000,
       "maxTokens": 2500,
       "systemPrompt": "Du bist ein erfahrener Pädagoge. Analysiere die Lernhistorie des Schülers und generiere eine tiefgründige, strukturierte Einschätzung im JSON-Format (Explainable AI) für Lehrkräfte. Belege jede Stärke und Schwäche mit konkreten Aufgaben-Referenzen. Du antwortest immer auf Deutsch."
+    }
+  },
+  "features": {
+    "logModelUsage": true,
+    "allowFallbackOnError": true,
+    "fallbackProvider": "gemini",
+    "fallbackModel": "gemini-flash-latest"
+  }
+}r auf Deutsch."
     }
   },
   "features": {
